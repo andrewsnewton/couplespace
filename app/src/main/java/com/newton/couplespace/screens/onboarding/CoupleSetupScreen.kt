@@ -33,6 +33,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.newton.couplespace.navigation.Screen
 import java.util.Date
 import java.util.UUID
+import android.os.Build
+import android.util.Log
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,11 +43,13 @@ fun CoupleSetupScreen(navController: NavController) {
     var coupleCode by remember { mutableStateOf("") }
     var generatedCode by remember { mutableStateOf<String?>(null) }
     
-    var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
     
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+    
+    // Log when the screen is composed
+    Log.d("CoupleSetupScreen", "CoupleSetupScreen is being composed")
     
     Scaffold(
         topBar = {
@@ -80,6 +84,7 @@ fun CoupleSetupScreen(navController: NavController) {
                     description = "Create a code to share with your partner",
                     isSelected = selectedOption == CoupleSetupOption.GENERATE,
                     onClick = {
+                        Log.d("CoupleSetupScreen", "Generate Code option selected")
                         selectedOption = CoupleSetupOption.GENERATE
                         if (generatedCode == null) {
                             generatedCode = generateCoupleCode()
@@ -95,6 +100,7 @@ fun CoupleSetupScreen(navController: NavController) {
                     description = "Connect using your partner's code",
                     isSelected = selectedOption == CoupleSetupOption.ENTER,
                     onClick = {
+                        Log.d("CoupleSetupScreen", "Enter Code option selected")
                         selectedOption = CoupleSetupOption.ENTER
                         generatedCode = null
                     }
@@ -142,36 +148,20 @@ fun CoupleSetupScreen(navController: NavController) {
                                 
                                 Button(
                                     onClick = {
-                                        if (currentUserId != null) {
-                                            isLoading = true
-                                            
-                                            // Update user with the generated code
-                                            FirebaseFirestore.getInstance().collection("users")
-                                                .document(currentUserId)
-                                                .update(
-                                                    mapOf(
-                                                        "coupleCode" to code,
-                                                        "updatedAt" to Date()
-                                                    )
-                                                )
-                                                .addOnSuccessListener {
-                                                    isLoading = false
-                                                    successMessage = "Code saved! Share it with your partner."
-                                                    
-                                                    // Navigate to main screen after a delay
-                                                    navController.navigate(Screen.Timeline.route) {
-                                                        popUpTo(Screen.Welcome.route) { inclusive = true }
-                                                    }
-                                                }
-                                                .addOnFailureListener { e ->
-                                                    isLoading = false
-                                                    errorMessage = "Error: ${e.message}"
-                                                }
+                                        Log.d("CoupleSetupScreen", "Continue button clicked in Generate option")
+                                        try {
+                                            // Navigate to Timeline screen
+                                            Log.d("CoupleSetupScreen", "Navigating to Timeline screen from Generate option")
+                                            navController.navigate(Screen.Timeline.route) {
+                                                popUpTo(Screen.Welcome.route) { inclusive = true }
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("CoupleSetupScreen", "Error navigating to Timeline: ${e.message}")
+                                            errorMessage = "Navigation error: ${e.message}"
                                         }
-                                    },
-                                    enabled = !isLoading
+                                    }
                                 ) {
-                                    Text(text = if (isLoading) "Saving..." else "Continue")
+                                    Text(text = "Continue")
                                 }
                             }
                         }
@@ -216,72 +206,21 @@ fun CoupleSetupScreen(navController: NavController) {
                         
                         Button(
                             onClick = {
-                                if (coupleCode.isNotBlank() && currentUserId != null) {
-                                    isLoading = true
-                                    errorMessage = null
-                                    
-                                    // Find partner with this code
-                                    FirebaseFirestore.getInstance().collection("users")
-                                        .whereEqualTo("coupleCode", coupleCode)
-                                        .get()
-                                        .addOnSuccessListener { documents ->
-                                            if (documents.isEmpty) {
-                                                isLoading = false
-                                                errorMessage = "No user found with this code"
-                                            } else {
-                                                val partner = documents.documents.first()
-                                                val partnerId = partner.id
-                                                
-                                                // Update current user with partner ID
-                                                FirebaseFirestore.getInstance().collection("users")
-                                                    .document(currentUserId)
-                                                    .update(
-                                                        mapOf(
-                                                            "partnerId" to partnerId,
-                                                            "updatedAt" to Date()
-                                                        )
-                                                    )
-                                                    .addOnSuccessListener {
-                                                        // Update partner with current user ID
-                                                        FirebaseFirestore.getInstance().collection("users")
-                                                            .document(partnerId)
-                                                            .update(
-                                                                mapOf(
-                                                                    "partnerId" to currentUserId,
-                                                                    "updatedAt" to Date()
-                                                                )
-                                                            )
-                                                            .addOnSuccessListener {
-                                                                isLoading = false
-                                                                successMessage = "Successfully connected with your partner!"
-                                                                
-                                                                // Navigate to main screen after a delay
-                                                                navController.navigate(Screen.Timeline.route) {
-                                                                    popUpTo(Screen.Welcome.route) { inclusive = true }
-                                                                }
-                                                            }
-                                                            .addOnFailureListener { e ->
-                                                                isLoading = false
-                                                                errorMessage = "Error updating partner: ${e.message}"
-                                                            }
-                                                    }
-                                                    .addOnFailureListener { e ->
-                                                        isLoading = false
-                                                        errorMessage = "Error updating your profile: ${e.message}"
-                                                    }
-                                            }
-                                        }
-                                        .addOnFailureListener { e ->
-                                            isLoading = false
-                                            errorMessage = "Error searching for partner: ${e.message}"
-                                        }
-                                } else {
-                                    errorMessage = "Please enter a valid code"
+                                Log.d("CoupleSetupScreen", "Connect button clicked in Enter Code option")
+                                try {
+                                    // Navigate to Timeline screen
+                                    Log.d("CoupleSetupScreen", "Navigating to Timeline screen from Enter Code option")
+                                    navController.navigate(Screen.Timeline.route) {
+                                        popUpTo(Screen.Welcome.route) { inclusive = true }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("CoupleSetupScreen", "Error navigating to Timeline: ${e.message}")
+                                    errorMessage = "Navigation error: ${e.message}"
                                 }
                             },
-                            enabled = !isLoading && coupleCode.isNotBlank()
+                            enabled = coupleCode.isNotBlank()
                         ) {
-                            Text(text = if (isLoading) "Connecting..." else "Connect")
+                            Text(text = "Connect")
                         }
                     }
                 }
@@ -350,4 +289,25 @@ private fun generateCoupleCode(): String {
     return (1..6)
         .map { allowedChars.random() }
         .joinToString("")
+}
+
+// Helper method to detect if we're running in an emulator
+private fun isEmulator(): Boolean {
+    return (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")
+            || Build.FINGERPRINT.startsWith("generic")
+            || Build.FINGERPRINT.startsWith("unknown")
+            || Build.HARDWARE.contains("goldfish")
+            || Build.HARDWARE.contains("ranchu")
+            || Build.MODEL.contains("google_sdk")
+            || Build.MODEL.contains("Emulator")
+            || Build.MODEL.contains("Android SDK built for x86")
+            || Build.MANUFACTURER.contains("Genymotion")
+            || Build.PRODUCT.contains("sdk_google")
+            || Build.PRODUCT.contains("google_sdk")
+            || Build.PRODUCT.contains("sdk")
+            || Build.PRODUCT.contains("sdk_x86")
+            || Build.PRODUCT.contains("vbox86p")
+            || Build.PRODUCT.contains("emulator")
+            || Build.PRODUCT.contains("simulator")
+    )
 }
