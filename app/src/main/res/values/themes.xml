@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme for Bonded app -->
+    <style name="Theme.Bonded" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Status bar color -->
+        <item name="android:statusBarColor">@color/romantic_pink</item>
+        <!-- Navigation bar color -->
+        <item name="android:navigationBarColor">@color/light_background</item>
+        <!-- Window background color -->
+        <item name="android:windowBackground">@color/light_background</item>
+        <!-- System UI visibility -->
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

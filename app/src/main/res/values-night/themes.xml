@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark application theme for Bonded app -->
+    <style name="Theme.Bonded" parent="android:Theme.Material.NoActionBar">
+        <!-- Status bar color -->
+        <item name="android:statusBarColor">@color/romantic_pink_dark</item>
+        <!-- Navigation bar color -->
+        <item name="android:navigationBarColor">@color/dark_background</item>
+        <!-- Window background color -->
+        <item name="android:windowBackground">@color/dark_background</item>
+        <!-- System UI visibility -->
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "124753661738",
+    "project_id": "couplespace-app",
+    "storage_bucket": "couplespace-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:124753661738:android:94e11021aa51089e9c9853",
+        "android_client_info": {
+          "package_name": "com.couplespace"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMbanQq7thzmPeCqIsq0TvLe4tiOPP464"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:124753661738:android:55b7fdd8712d97df9c9853",
+        "android_client_info": {
+          "package_name": "com.newton.couplespace"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMbanQq7thzmPeCqIsq0TvLe4tiOPP464"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
