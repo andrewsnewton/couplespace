@@ -51,7 +51,7 @@ fun UserSetupScreen(navController: NavController) {
     val authService = remember { AuthService(context) }
     val coroutineScope = rememberCoroutineScope()
     
-    // Check if user is logged in
+    // Check if user is logged in and if their profile is complete
     LaunchedEffect(Unit) {
         if (!authService.isUserLoggedIn()) {
             // User is not logged in, redirect to login screen
@@ -59,6 +59,23 @@ fun UserSetupScreen(navController: NavController) {
             navController.navigate(Screen.Login.route) {
                 popUpTo(Screen.UserSetup.route) { inclusive = true }
             }
+            return@LaunchedEffect
+        }
+        
+        // Check if profile is already complete
+        try {
+            if (authService.isProfileComplete()) {
+                Log.d("UserSetupScreen", "User profile is already complete, skipping to CoupleSetup")
+                // Profile is complete, navigate to couple setup
+                navController.navigate(Screen.CoupleSetup.route) {
+                    popUpTo(Screen.UserSetup.route) { inclusive = true }
+                }
+            } else {
+                Log.d("UserSetupScreen", "User profile is not complete, showing setup screen")
+            }
+        } catch (e: Exception) {
+            Log.e("UserSetupScreen", "Error checking profile completion: ${e.message}")
+            // If there's an error, we'll just show the setup screen
         }
     }
     

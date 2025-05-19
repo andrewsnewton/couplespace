@@ -149,10 +149,8 @@ fun ProfileScreen(navController: NavController) {
             TopAppBar(
                 title = { Text("Profile") },
                 navigationIcon = {
-                    if (navController != null) {
-                        IconButton(onClick = { navController.navigateUp() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
+                    IconButton(onClick = { navController.navigateUp() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -207,28 +205,42 @@ fun ProfileScreen(navController: NavController) {
                         onWeightChange = { weight = it },
                         onSave = {
                             isLoading = true
-                            val updatedUser = user?.copy(
-                                name = name,
-                                age = age.toIntOrNull() ?: 0,
-                                height = height.toIntOrNull() ?: 0,
-                                weight = weight.toDoubleOrNull() ?: 0.0
-                            )
-                            
-                            if (updatedUser != null) {
-                                val userId = FirebaseAuth.getInstance().currentUser?.uid
-                                if (userId != null) {
-                                    FirebaseFirestore.getInstance().collection("users").document(userId)
-                                        .set(updatedUser)
-                                        .addOnSuccessListener {
-                                            user = updatedUser
-                                            isEditMode = false
-                                            isLoading = false
-                                        }
-                                        .addOnFailureListener { e ->
-                                            errorMessage = "Error updating profile: ${e.message}"
-                                            isLoading = false
-                                        }
-                                }
+                            // Instead of replacing the entire document, update only the fields that changed
+                            val userId = FirebaseAuth.getInstance().currentUser?.uid
+                            if (userId != null) {
+                                // Create a map of fields to update
+                                val updates = hashMapOf<String, Any>(
+                                    "name" to name,
+                                    "age" to (age.toIntOrNull() ?: 0),
+                                    "height" to (height.toIntOrNull() ?: 0),
+                                    "weight" to (weight.toDoubleOrNull() ?: 0.0),
+                                    "updatedAt" to Date(),
+                                    "isProfileComplete" to true // Ensure profile is marked as complete
+                                )
+                                
+                                // Use update() instead of set() to preserve other fields
+                                FirebaseFirestore.getInstance().collection("users").document(userId)
+                                    .update(updates)
+                                    .addOnSuccessListener {
+                                        // Update the local user object with the new values
+                                        user = user?.copy(
+                                            name = name,
+                                            age = age.toIntOrNull() ?: 0,
+                                            height = height.toIntOrNull() ?: 0,
+                                            weight = weight.toDoubleOrNull() ?: 0.0,
+                                            updatedAt = Date(),
+                                            isProfileComplete = true
+                                        )
+                                        isEditMode = false
+                                        isLoading = false
+                                        
+                                        Log.d("ProfileScreen", "Profile updated successfully")
+                                    }
+                                    .addOnFailureListener { e ->
+                                        errorMessage = "Error updating profile: ${e.message}"
+                                        isLoading = false
+                                        Log.e("ProfileScreen", "Error updating profile: ${e.message}")
+                                    }
                             }
                         },
                         onCancel = { isEditMode = false }
