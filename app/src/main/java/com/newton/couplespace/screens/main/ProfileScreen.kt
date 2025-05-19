@@ -23,7 +23,7 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(navController: NavController? = null) {
+fun ProfileScreen(navController: NavController) {
     // Add a log statement when the ProfileScreen is composed
     Log.d("ProfileScreen", "ProfileScreen is being composed")
     

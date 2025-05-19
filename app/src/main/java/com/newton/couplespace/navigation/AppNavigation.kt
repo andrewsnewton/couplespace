@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.newton.couplespace.screens.auth.LoginScreen
 import com.newton.couplespace.screens.main.ChatScreen
 import com.newton.couplespace.screens.main.HealthScreen
 import com.newton.couplespace.screens.main.ProfileScreen
@@ -13,6 +14,7 @@ import com.newton.couplespace.screens.onboarding.UserSetupScreen
 import com.newton.couplespace.screens.onboarding.WelcomeScreen
 
 sealed class Screen(val route: String) {
+    object Login : Screen("login")
     object Welcome : Screen("welcome")
     object UserSetup : Screen("user_setup")
     object CoupleSetup : Screen("couple_setup")
@@ -23,12 +25,16 @@ sealed class Screen(val route: String) {
 }
 
 @Composable
-fun AppNavigation(navController: NavHostController, startDestination: String = Screen.Welcome.route) {
+fun AppNavigation(navController: NavHostController, startDestination: String = Screen.Login.route) {
     NavHost(
         navController = navController,
         startDestination = startDestination
     ) {
-        // Onboarding flow
+        // Auth and onboarding flow
+        composable(Screen.Login.route) {
+            LoginScreen(navController = navController)
+        }
+        
         composable(Screen.Welcome.route) {
             WelcomeScreen(navController = navController)
         }
@@ -41,13 +47,13 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         
         // Main screens
         composable(Screen.Timeline.route) {
-            TimelineScreen()
+            TimelineScreen(navController = navController)
         }
         composable(Screen.Health.route) {
-            HealthScreen()
+            HealthScreen(navController = navController)
         }
         composable(Screen.Chat.route) {
-            ChatScreen()
+            ChatScreen(navController = navController)
         }
         composable(Screen.Profile.route) {
             ProfileScreen(navController = navController)

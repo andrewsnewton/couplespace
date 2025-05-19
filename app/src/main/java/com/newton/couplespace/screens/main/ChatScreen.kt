@@ -68,7 +68,7 @@ import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen() {
+fun ChatScreen(navController: androidx.navigation.NavController) {
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     var partnerUserId by remember { mutableStateOf<String?>(null) }
     var partnerName by remember { mutableStateOf<String?>(null) }

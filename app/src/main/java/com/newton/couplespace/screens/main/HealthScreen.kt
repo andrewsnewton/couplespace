@@ -71,7 +71,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HealthScreen() {
+fun HealthScreen(navController: androidx.navigation.NavController) {
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     var partnerUserId by remember { mutableStateOf<String?>(null) }
     var healthLogs by remember { mutableStateOf<List<HealthLog>>(emptyList()) }

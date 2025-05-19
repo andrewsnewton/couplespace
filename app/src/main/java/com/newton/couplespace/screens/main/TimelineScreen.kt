@@ -1,572 +1,307 @@
 package com.newton.couplespace.screens.main
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.newton.couplespace.models.EntryType
-import com.newton.couplespace.models.TimelineEntry
-import kotlinx.coroutines.launch
+import androidx.compose.ui.window.Dialog
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import com.google.firebase.auth.FirebaseAuth
+import com.newton.couplespace.models.TimelineEntry
+import com.newton.couplespace.navigation.MainScreenScaffold
+import com.newton.couplespace.screens.main.timeline.AddTimelineEntryDialog
+import com.newton.couplespace.screens.main.timeline.CalendarToggle
+import com.newton.couplespace.screens.main.timeline.CalendarView
+import com.newton.couplespace.screens.main.timeline.TimelineEntryItem
+import com.newton.couplespace.screens.main.timeline.TimelineRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TimelineScreen() {
-    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+fun TimelineScreen(navController: NavController = rememberNavController()) {
+    // Get shared preferences for user data
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sharedPrefs = remember { context.getSharedPreferences("user_prefs", android.content.Context.MODE_PRIVATE) }
+    
+    // Get or generate a consistent user ID
+    val currentUserId = remember {
+        var storedId = sharedPrefs.getString("user_id", null) ?: ""
+        
+        // If no stored user ID, generate one and save it
+        if (storedId.isBlank()) {
+            // Try to get from Firebase Auth first
+            storedId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+            
+            // If still blank, generate a test user ID
+            if (storedId.isBlank()) {
+                storedId = "test_user_${System.currentTimeMillis()}"
+                // Save it for future use
+                sharedPrefs.edit().putString("user_id", storedId).apply()
+            }
+        }
+        
+        println("Using user ID for timeline: $storedId")
+        storedId
+    }
     var partnerUserId by remember { mutableStateOf<String?>(null) }
     var timelineEntries by remember { mutableStateOf<List<TimelineEntry>>(emptyList()) }
     var isMyCalendar by remember { mutableStateOf(true) }
     var showAddEntryDialog by remember { mutableStateOf(false) }
-    var selectedDate by remember { mutableStateOf(Date()) }
     var isLoading by remember { mutableStateOf(true) }
+    var selectedDate by remember { mutableStateOf(Date()) }
+    var isCalendarExpanded by remember { mutableStateOf(false) }
     
-    // Get partner ID
-    LaunchedEffect(currentUserId) {
-        if (currentUserId.isNotBlank()) {
-            FirebaseFirestore.getInstance().collection("users")
-                .document(currentUserId)
-                .get()
-                .addOnSuccessListener { document ->
-                    partnerUserId = document.getString("partnerId")
-                    loadTimelineEntries(currentUserId, isMyCalendar, partnerUserId) { entries ->
-                        timelineEntries = entries
-                        isLoading = false
-                    }
-                }
-        }
+    // Create repository instance with context
+    val repository = remember { TimelineRepository(context) }
+    
+    // Check if running in emulator for fallback behavior
+    val isEmulator = android.os.Build.PRODUCT.contains("sdk") || 
+                    android.os.Build.PRODUCT.contains("emulator") ||
+                    android.os.Build.FINGERPRINT.contains("generic")
+    
+    // We'll get the partner ID from Firebase via the TimelineRepository
+    // This is a placeholder for UI state until we get the real partner ID
+    LaunchedEffect(Unit) {
+        android.util.Log.d("TimelineScreen", "Initializing TimelineScreen, will get partner ID from Firebase")
     }
     
-    // Load timeline entries when calendar toggle changes
-    LaunchedEffect(isMyCalendar) {
-        isLoading = true
-        loadTimelineEntries(currentUserId, isMyCalendar, partnerUserId) { entries ->
-            timelineEntries = entries
+    // Initial load of timeline entries
+    LaunchedEffect(currentUserId, isMyCalendar) {
+        if (currentUserId.isNotBlank()) {
+            android.util.Log.d("TimelineScreen", "Loading initial timeline entries for ${if (isMyCalendar) "my" else "partner's"} calendar")
+            repository.loadTimelineEntries(currentUserId, isMyCalendar) { entries ->
+                timelineEntries = entries
+                isLoading = false
+            }
+        } else {
+            android.util.Log.e("TimelineScreen", "Current user ID is blank")
             isLoading = false
         }
     }
     
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Timeline") }
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddEntryDialog = true }
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Entry")
-            }
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // Calendar Toggle
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                SegmentedButton(
-                    selected = isMyCalendar,
-                    onClick = { isMyCalendar = true },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-                ) {
-                    Text("My Calendar")
-                }
-                SegmentedButton(
-                    selected = !isMyCalendar,
-                    onClick = { isMyCalendar = false },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-                ) {
-                    Text("Partner's Calendar")
-                }
+    // Load timeline entries when calendar toggle changes or date changes
+    LaunchedEffect(isMyCalendar, selectedDate) {
+        isLoading = true
+        android.util.Log.d("TimelineScreen", "Loading timeline entries after calendar toggle/date change")
+        repository.loadTimelineEntries(currentUserId, isMyCalendar) { entries ->
+            // Filter entries by selected date if needed
+            val calendar = Calendar.getInstance().apply { time = selectedDate }
+            val year = calendar.get(Calendar.YEAR)
+            val month = calendar.get(Calendar.MONTH)
+            val day = calendar.get(Calendar.DAY_OF_MONTH)
+            
+            val filteredEntries = entries.filter { entry ->
+                val entryCalendar = Calendar.getInstance().apply { time = entry.date }
+                val entryYear = entryCalendar.get(Calendar.YEAR)
+                val entryMonth = entryCalendar.get(Calendar.MONTH)
+                val entryDay = entryCalendar.get(Calendar.DAY_OF_MONTH)
+                
+                // Match entries for the selected date
+                entryYear == year && entryMonth == month && entryDay == day
             }
             
-            // Calendar View (simplified for now)
-            Card(
+            timelineEntries = filteredEntries
+            isLoading = false
+        }
+    }
+    
+    // This is the key change - using MainScreenScaffold to enable bottom navigation
+    MainScreenScaffold(
+        navController = navController
+    ) { innerPadding ->
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Timeline") }
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = { showAddEntryDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(bottom = 56.dp) // Add padding to position above bottom nav
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add Entry",
+                        modifier = Modifier.padding(8.dp) // Make the icon larger
+                    )
+                }
+            }
+        ) { scaffoldPadding ->
+            if (showAddEntryDialog) {
+                Dialog(
+                    onDismissRequest = { showAddEntryDialog = false },
+                    content = {
+                        androidx.compose.material3.Surface(
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                            tonalElevation = 8.dp,
+                            shadowElevation = 8.dp,
+                            modifier = Modifier.fillMaxWidth(0.95f)
+                        ) {
+                            // Determine which user ID to use based on which calendar is active
+                            val entryUserId = if (isMyCalendar) currentUserId else partnerUserId ?: ""
+                            
+                            AddTimelineEntryDialog(
+                                onDismiss = { showAddEntryDialog = false },
+                                onAddEntry = { newEntry ->
+                                    android.util.Log.d("TimelineScreen", "Adding entry to ${if (isMyCalendar) "MY" else "PARTNER'S"} calendar")
+                                    
+                                    repository.saveTimelineEntry(
+                                        newEntry = newEntry,
+                                        currentUserId = currentUserId,
+                                        isMyCalendar = isMyCalendar,
+                                        isEmulator = isEmulator
+                                    ) { success ->
+                                        if (success) {
+                                            // Refresh the timeline entries
+                                            repository.loadTimelineEntries(currentUserId, isMyCalendar) { entries ->
+                                                timelineEntries = entries
+                                            }
+                                        }
+                                        showAddEntryDialog = false
+                                    }
+                                },
+                                isMyCalendar = isMyCalendar
+                            )
+                        }
+                    }
+                )
+            }
+            
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    .fillMaxSize()
+                    .padding(scaffoldPadding)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    // Calendar Toggle
+                    CalendarToggle(
+                        isMyCalendar = isMyCalendar,
+                        onToggleCalendar = { isMyCalendar = it }
+                    )
+                    
+                    // Calendar header with month/year and expand/collapse button
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                     ) {
-                        Text(
-                            text = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date()),
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(selectedDate),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            
+                            IconButton(onClick = { isCalendarExpanded = !isCalendarExpanded }) {
+                                Icon(
+                                    imageVector = if (isCalendarExpanded) 
+                                        Icons.Default.KeyboardArrowUp 
+                                    else 
+                                        Icons.Default.CalendarMonth,
+                                    contentDescription = if (isCalendarExpanded) "Collapse Calendar" else "Expand Calendar"
+                                )
+                            }
+                        }
                         
-                        IconButton(onClick = { /* Open full calendar */ }) {
-                            Icon(Icons.Default.CalendarMonth, contentDescription = "Open Calendar")
+                        // Show calendar only when expanded
+                        AnimatedVisibility(
+                            visible = isCalendarExpanded,
+                            enter = expandVertically(),
+                            exit = shrinkVertically()
+                        ) {
+                            CalendarView(
+                                selectedDate = selectedDate,
+                                onDateSelected = { newDate ->
+                                    selectedDate = newDate
+                                    // Filter entries by the selected date if needed
+                                    println("Selected date: ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(newDate)}")
+                                }
+                            )
                         }
                     }
                     
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     
-                    // Simple calendar days representation
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        // Just a placeholder for a real calendar implementation
-                        for (day in 1..7) {
-                            val hasEvent = day % 3 == 0
-                            
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = SimpleDateFormat("E", Locale.getDefault())
-                                        .format(Calendar.getInstance().apply {
-                                            set(Calendar.DAY_OF_WEEK, day)
-                                        }.time),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                
-                                Spacer(modifier = Modifier.height(4.dp))
-                                
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (day == Calendar.getInstance().get(Calendar.DAY_OF_WEEK))
-                                                MaterialTheme.colorScheme.primary
-                                            else Color.Transparent
-                                        )
-                                        .clickable { /* Select date */ },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = day.toString(),
-                                        color = if (day == Calendar.getInstance().get(Calendar.DAY_OF_WEEK))
-                                            MaterialTheme.colorScheme.onPrimary
-                                        else MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                
-                                if (hasEvent) {
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(top = 4.dp)
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary)
-                                    )
-                                }
+                    // Timeline Entries
+                    if (isLoading) {
+                        Text(
+                            text = "Loading entries...",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    } else if (timelineEntries.isEmpty()) {
+                        Text(
+                            text = if (isMyCalendar) "No entries in your calendar yet" else "No entries in your partner's calendar yet",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(timelineEntries) { entry ->
+                                TimelineEntryItem(entry)
                             }
                         }
                     }
                 }
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Timeline Entries
-            if (isLoading) {
-                Text(
-                    text = "Loading entries...",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    textAlign = TextAlign.Center
-                )
-            } else if (timelineEntries.isEmpty()) {
-                Text(
-                    text = if (isMyCalendar) "No entries in your calendar yet" else "No entries in your partner's calendar yet",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    textAlign = TextAlign.Center
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(timelineEntries) { entry ->
-                        TimelineEntryItem(entry)
-                    }
-                }
-            }
         }
     }
-    
-    // Add Entry Dialog
-    if (showAddEntryDialog) {
-        AddTimelineEntryDialog(
-            onDismiss = { showAddEntryDialog = false },
-            onEntryAdded = { entry ->
-                // Add entry to Firestore
-                val newEntry = entry.copy(
-                    userId = currentUserId,
-                    createdAt = Date(),
-                    updatedAt = Date()
-                )
-                
-                FirebaseFirestore.getInstance().collection("timelineEntries")
-                    .add(newEntry)
-                    .addOnSuccessListener {
-                        // Refresh timeline entries
-                        loadTimelineEntries(currentUserId, isMyCalendar, partnerUserId) { entries ->
-                            timelineEntries = entries
-                        }
-                    }
-                
-                showAddEntryDialog = false
-            }
-        )
-    }
-}
-
-@Composable
-fun TimelineEntryItem(entry: TimelineEntry) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon based on entry type
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(
-                        when (entry.type) {
-                            EntryType.EVENT -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                            EntryType.MEMORY -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = when (entry.type) {
-                        EntryType.EVENT -> Icons.Default.Event
-                        EntryType.MEMORY -> Icons.Default.PhotoCamera
-                    },
-                    contentDescription = entry.type.name,
-                    tint = when (entry.type) {
-                        EntryType.EVENT -> MaterialTheme.colorScheme.primary
-                        EntryType.MEMORY -> MaterialTheme.colorScheme.secondary
-                    }
-                )
-            }
-            
-            Spacer(modifier = Modifier.padding(horizontal = 8.dp))
-            
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = entry.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                Text(
-                    text = SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault()).format(entry.date),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                if (entry.description.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    Text(
-                        text = entry.description,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-            
-            if (entry.nudgeEnabled) {
-                Icon(
-                    imageVector = Icons.Default.Notifications,
-                    contentDescription = "Nudge Enabled",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddTimelineEntryDialog(
-    onDismiss: () -> Unit,
-    onEntryAdded: (TimelineEntry) -> Unit
-) {
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var entryType by remember { mutableStateOf(EntryType.EVENT) }
-    var nudgeEnabled by remember { mutableStateOf(false) }
-    var showDatePicker by remember { mutableStateOf(false) }
-    var selectedDate by remember { mutableStateOf(Date()) }
-    
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = selectedDate.time
-    )
-    
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Add Timeline Entry",
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-        
-        // Title Field
-        OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            label = { Text("Title") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Description Field
-        OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            label = { Text("Description") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 3
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Date Picker
-        OutlinedTextField(
-            value = SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault()).format(selectedDate),
-            onValueChange = { },
-            label = { Text("Date") },
-            modifier = Modifier.fillMaxWidth(),
-            readOnly = true,
-            trailingIcon = {
-                IconButton(onClick = { showDatePicker = true }) {
-                    Icon(Icons.Default.CalendarMonth, contentDescription = "Select Date")
-                }
-            }
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Entry Type Dropdown
-        var expanded by remember { mutableStateOf(false) }
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = it }
-        ) {
-            OutlinedTextField(
-                value = entryType.name.lowercase().replaceFirstChar { it.uppercase() },
-                onValueChange = { },
-                readOnly = true,
-                label = { Text("Type") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier
-                    .fillMaxWidth()
-            )
-            
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                EntryType.values().forEach { type ->
-                    DropdownMenuItem(
-                        text = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                        onClick = {
-                            entryType = type
-                            expanded = false
-                        }
-                    )
-                }
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Nudge Partner Checkbox
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = nudgeEnabled,
-                onCheckedChange = { nudgeEnabled = it }
-            )
-            
-            Text(
-                text = "Nudge Partner",
-                modifier = Modifier.clickable { nudgeEnabled = !nudgeEnabled }
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        // Buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(
-                onClick = onDismiss
-            ) {
-                Text("Cancel")
-            }
-            
-            TextButton(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        onEntryAdded(
-                            TimelineEntry(
-                                title = title,
-                                description = description,
-                                date = selectedDate,
-                                type = entryType,
-                                nudgeEnabled = nudgeEnabled
-                            )
-                        )
-                    }
-                },
-                enabled = title.isNotBlank()
-            ) {
-                Text("Add Entry")
-            }
-        }
-    }
-    
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let {
-                            selectedDate = Date(it)
-                        }
-                        showDatePicker = false
-                    }
-                ) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showDatePicker = false }
-                ) {
-                    Text("Cancel")
-                }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-}
-
-private fun loadTimelineEntries(
-    currentUserId: String,
-    isMyCalendar: Boolean,
-    partnerUserId: String?,
-    onEntriesLoaded: (List<TimelineEntry>) -> Unit
-) {
-    val userId = if (isMyCalendar) currentUserId else partnerUserId
-    
-    if (userId.isNullOrBlank()) {
-        onEntriesLoaded(emptyList())
-        return
-    }
-    
-    FirebaseFirestore.getInstance().collection("timelineEntries")
-        .whereEqualTo("userId", userId)
-        .get()
-        .addOnSuccessListener { documents ->
-            val entries = documents.mapNotNull { doc ->
-                doc.toObject(TimelineEntry::class.java)
-            }
-            onEntriesLoaded(entries)
-        }
-        .addOnFailureListener {
-            onEntriesLoaded(emptyList())
-        }
 }
