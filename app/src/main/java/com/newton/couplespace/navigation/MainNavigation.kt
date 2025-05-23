@@ -3,6 +3,7 @@ package com.newton.couplespace.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.CalendarViewMonth
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Person
@@ -31,6 +32,12 @@ sealed class BottomNavItem(
         icon = Icons.Default.DateRange
     )
     
+    object EnhancedTimeline : BottomNavItem(
+        route = Screen.EnhancedTimeline.route,
+        title = "Enhanced",
+        icon = Icons.Default.CalendarViewMonth
+    )
+    
     object Health : BottomNavItem(
         route = Screen.Health.route,
         title = "Health",
@@ -54,6 +61,7 @@ sealed class BottomNavItem(
 fun MainBottomNavigation(navController: NavController) {
     val items = listOf(
         BottomNavItem.Timeline,
+        BottomNavItem.EnhancedTimeline,
         BottomNavItem.Health,
         BottomNavItem.Chat,
         BottomNavItem.Profile

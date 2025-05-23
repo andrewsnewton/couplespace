@@ -262,11 +262,34 @@ fun TimelineScreen(navController: NavController = rememberNavController()) {
                     modifier = Modifier
                         .fillMaxSize()
                 ) {
-                    // Calendar Toggle
-                    CalendarToggle(
-                        isMyCalendar = isMyCalendar,
-                        onToggleCalendar = { isMyCalendar = it }
-                    )
+                    // Calendar Toggle and Enhanced Timeline Button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CalendarToggle(
+                            isMyCalendar = isMyCalendar,
+                            onToggleCalendar = { isMyCalendar = it }
+                        )
+                        
+                        // Button to navigate to enhanced timeline
+                        androidx.compose.material3.Button(
+                            onClick = { 
+                                // Navigate to the enhanced timeline screen
+                                navController.navigate("enhanced_timeline") 
+                            },
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier.padding(4.dp)
+                        ) {
+                            Text("Try Enhanced Timeline")
+                        }
+                    }
                     
                     // Calendar header with month/year and expand/collapse button
                     Card(

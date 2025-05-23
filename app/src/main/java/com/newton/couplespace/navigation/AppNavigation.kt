@@ -9,6 +9,7 @@ import com.newton.couplespace.screens.main.ChatScreen
 import com.newton.couplespace.screens.main.HealthScreen
 import com.newton.couplespace.screens.main.ProfileScreen
 import com.newton.couplespace.screens.main.TimelineScreen
+import com.newton.couplespace.screens.main.timeline.EnhancedTimelineScreen
 import com.newton.couplespace.screens.onboarding.CoupleSetupScreen
 import com.newton.couplespace.screens.onboarding.UserSetupScreen
 import com.newton.couplespace.screens.onboarding.WelcomeScreen
@@ -19,6 +20,7 @@ sealed class Screen(val route: String) {
     object UserSetup : Screen("user_setup")
     object CoupleSetup : Screen("couple_setup")
     object Timeline : Screen("timeline")
+    object EnhancedTimeline : Screen("enhanced_timeline")
     object Health : Screen("health")
     object Chat : Screen("chat")
     object Profile : Screen("profile")
@@ -48,6 +50,9 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         // Main screens
         composable(Screen.Timeline.route) {
             TimelineScreen(navController = navController)
+        }
+        composable(Screen.EnhancedTimeline.route) {
+            EnhancedTimelineScreen(navController = navController)
         }
         composable(Screen.Health.route) {
             HealthScreen(navController = navController)
