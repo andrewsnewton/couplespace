@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,6 +38,51 @@ fun ProfileScreen(navController: NavController) {
     var age by remember { mutableStateOf("") }
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
+    
+    // Partner data
+    var partner by remember { mutableStateOf<User?>(null) }
+    var isPartnerLoading by remember { mutableStateOf(false) }
+    
+    // Fetch partner data when user data is loaded
+    LaunchedEffect(user) {
+        try {
+            val partnerId = user?.partnerId?.takeIf { it.isNotEmpty() } ?: run {
+                partner = null
+                isPartnerLoading = false
+                return@LaunchedEffect
+            }
+            
+            isPartnerLoading = true
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(partnerId)
+                .get()
+                .addOnSuccessListener { document ->
+                    try {
+                        if (document.exists()) {
+                            partner = document.toObject(User::class.java)
+                        } else {
+                            Log.w("ProfileScreen", "Partner document does not exist")
+                            partner = null
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ProfileScreen", "Error parsing partner data", e)
+                        partner = null
+                    } finally {
+                        isPartnerLoading = false
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.e("ProfileScreen", "Error fetching partner data", e)
+                    partner = null
+                    isPartnerLoading = false
+                }
+        } catch (e: Exception) {
+            Log.e("ProfileScreen", "Exception in partner data fetch", e)
+            partner = null
+            isPartnerLoading = false
+        }
+    }
     
     // Fetch user data
     LaunchedEffect(key1 = Unit) {
@@ -246,7 +292,78 @@ fun ProfileScreen(navController: NavController) {
                         onCancel = { isEditMode = false }
                     )
                 } else {
-                    ViewProfileContent(user = user)
+                    val scrollState = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                            .padding(16.dp)
+                    ) {
+                        ViewProfileContent(user)
+                        
+                        // Show partner profile section
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(
+                            "Partner Profile",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        when {
+                            isPartnerLoading -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                            partner != null -> {
+                                val currentPartner = partner
+                                if (currentPartner != null) {
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Person,
+                                                    contentDescription = "Partner",
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    currentPartner.name.ifEmpty { "Partner" },
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            ProfileInfoRow("Age", currentPartner.age.takeIf { it > 0 }?.toString() ?: "Not set")
+                                            ProfileInfoRow("Height", if (currentPartner.height > 0) "${currentPartner.height} cm" else "Not set")
+                                            ProfileInfoRow("Weight", if (currentPartner.weight > 0) "${currentPartner.weight} kg" else "Not set")
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {
+                                Text(
+                                    "No partner linked yet",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -259,7 +376,6 @@ fun ViewProfileContent(user: User?) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
-            .verticalScroll(rememberScrollState())
     ) {
         Text(
             text = "Personal Information",

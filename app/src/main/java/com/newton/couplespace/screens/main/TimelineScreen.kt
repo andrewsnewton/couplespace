@@ -10,12 +10,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -155,17 +157,58 @@ fun TimelineScreen(navController: NavController = rememberNavController()) {
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { showAddEntryDialog = true },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(bottom = 56.dp) // Add padding to position above bottom nav
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Entry",
-                        modifier = Modifier.padding(8.dp) // Make the icon larger
-                    )
+                    // Nudge Button
+                    FloatingActionButton(
+                        onClick = {
+                            repository.sendNudgeToPartner(currentUserId) { success ->
+                                if (success) {
+                                    // Show a toast or snackbar to confirm the nudge was sent
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Nudge sent to your partner!",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                } else {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Failed to send nudge. Please try again.",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        },
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary,
+                        modifier = Modifier
+                            .padding(bottom = 16.dp)
+                            .size(56.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Nudge Partner",
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                    
+                    // Add Entry Button
+                    FloatingActionButton(
+                        onClick = { showAddEntryDialog = true },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .padding(bottom = 56.dp) // Add padding to position above bottom nav
+                            .size(56.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Entry",
+                            modifier = Modifier.padding(8.dp) // Make the icon larger
+                        )
+                    }
                 }
             }
         ) { scaffoldPadding ->

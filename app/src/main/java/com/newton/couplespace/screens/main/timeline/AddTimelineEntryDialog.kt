@@ -3,12 +3,14 @@ package com.newton.couplespace.screens.main.timeline
 import android.content.Context
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.DatePicker
@@ -118,34 +120,51 @@ fun AddTimelineEntryDialog(
         )
         
         // Entry Type Selection
-        var expanded by remember { mutableStateOf(false) }
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = it },
-            modifier = Modifier.fillMaxWidth()
+        var isDropdownExpanded by remember { mutableStateOf(false) }
+        
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
         ) {
-            OutlinedTextField(
-                value = selectedType.name.lowercase().capitalize(),
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Entry Type") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier
-                    .fillMaxWidth()
-            )
-            
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
+            ExposedDropdownMenuBox(
+                expanded = isDropdownExpanded,
+                onExpandedChange = { isDropdownExpanded = it },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                EntryType.values().forEach { type ->
-                    DropdownMenuItem(
-                        text = { Text(type.name.lowercase().capitalize()) },
-                        onClick = {
-                            selectedType = type
-                            expanded = false
-                        }
-                    )
+                OutlinedTextField(
+                    value = selectedType.name.lowercase().replaceFirstChar { it.uppercase() },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Entry Type") },
+                    trailingIcon = { 
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded) 
+                    },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                )
+                
+                ExposedDropdownMenu(
+                    expanded = isDropdownExpanded,
+                    onDismissRequest = { isDropdownExpanded = false }
+                ) {
+                    EntryType.values().forEach { type ->
+                        DropdownMenuItem(
+                            text = { 
+                                Text(
+                                    type.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) 
+                            },
+                            onClick = {
+                                selectedType = type
+                                isDropdownExpanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                        )
+                    }
                 }
             }
         }

@@ -72,6 +72,7 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-storage-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
+    implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     implementation("com.google.firebase:firebase-appcheck-debug")
     
@@ -86,6 +87,9 @@ dependencies {
     // Image loading and caching
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation(libs.firebase.common.ktx)
+    
+    // HTTP client for FCM
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Testing dependencies
     testImplementation(libs.junit)

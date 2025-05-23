@@ -671,34 +671,52 @@ fun AskQuestionDialog(
                 var expanded by remember { mutableStateOf(false) }
                 val topics = QuestionTopic.values()
                 
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = it }
+                // Dropdown for topic selection
+                var isDropdownExpanded by remember { mutableStateOf(false) }
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
                 ) {
-                    OutlinedTextField(
-                        value = selectedTopic.name.lowercase().replaceFirstChar { it.uppercase() },
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Topic") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                    )
-                    
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
+                    ExposedDropdownMenuBox(
+                        expanded = isDropdownExpanded,
+                        onExpandedChange = { isDropdownExpanded = !isDropdownExpanded },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        topics.forEach { topic ->
-                            DropdownMenuItem(
-                                text = { Text(topic.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                                onClick = {
-                                    selectedTopic = topic
-                                    expanded = false
-                                }
-                            )
+                        OutlinedTextField(
+                            value = selectedTopic.name.lowercase().replaceFirstChar { it.uppercase() },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Topic") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDropdownExpanded)
+                            },
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        
+                        ExposedDropdownMenu(
+                            expanded = isDropdownExpanded,
+                            onDismissRequest = { isDropdownExpanded = false }
+                        ) {
+                            topics.forEach { topic ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Text(
+                                            topic.name.lowercase().replaceFirstChar { it.uppercase() },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) 
+                                    },
+                                    onClick = {
+                                        selectedTopic = topic
+                                        expanded = false
+                                    },
+                                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                                )
+                            }
                         }
                     }
                 }
