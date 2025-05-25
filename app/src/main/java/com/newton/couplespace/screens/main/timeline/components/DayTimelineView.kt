@@ -36,6 +36,11 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.math.max
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 
 // Pixels per minute for scaling (2dp per minute = 120dp per hour)
 private const val PIXELS_PER_MINUTE = 2f
@@ -170,7 +175,7 @@ fun DayTimelineView(
                 // Time markers column (left side)
                 Box(
                     modifier = Modifier
-                        .width(40.dp)
+                        .width(36.dp)  // Reduced from 40dp
                         .height(timelineHeight)
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
@@ -191,6 +196,34 @@ fun DayTimelineView(
                                 .offset(y = yPosition)
                         )
                     }
+                    
+                    // Current time indicator in the hours column
+                    val needlePosition = (currentMinutesSinceMidnight * pixelsPerMinute).dp
+                    
+                    // Only show the time indicator if it's for today
+                    if (date.isEqual(LocalDate.now())) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(24.dp)
+                                .offset(y = needlePosition - 12.dp)
+                                .zIndex(10f)
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(end = 4.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Text(
+                                text = currentTime.format(DateTimeFormatter.ofPattern("h:mm")),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Red,
+                                fontSize = 10.sp,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier
+                                    .background(Color.Red.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 2.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                 }
                 
                 // Events column with continuous timeline (right side)
@@ -202,31 +235,34 @@ fun DayTimelineView(
                 ) {
                     // Get colors outside of Canvas to avoid Composable invocation errors
                     val outlineVariantColor = MaterialTheme.colorScheme.outlineVariant
-                    
+                    val density = LocalDensity.current.density
                     // Draw the timeline grid first (background)
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val hourLineColor = outlineVariantColor.copy(alpha = 0.5f)
+                        val hourLineColor = Color.DarkGray  // Solid black for hour lines
                         val halfHourLineColor = outlineVariantColor.copy(alpha = 0.3f)
                         
                         // Draw hour separator lines
                         for (hour in 0..23) {
-                            val yPosition = hour * 60 * PIXELS_PER_MINUTE
+                            val yPositionDp = (hour * 60 * PIXELS_PER_MINUTE).dp
+                            // Convert to pixels
+                            val yPositionPx = yPositionDp.value * density
                             
-                            // Hour line - solid line across full width
+                            // Hour line - solid black line across full width
                             drawLine(
                                 color = hourLineColor,
-                                start = Offset(-size.width, yPosition),
-                                end = Offset(size.width * 2, yPosition),
-                                strokeWidth = 1f
+                                start = Offset(0f, yPositionPx),
+                                end = Offset(size.width, yPositionPx),
+                                strokeWidth = 1.0f  // Slightly thicker for better visibility
                             )
                             
-                            // Half-hour line - dotted line
-                            val halfHourY = yPosition + (30 * PIXELS_PER_MINUTE)
+                            // Half-hour line - dashed line
+                            val halfHourY = yPositionPx + (30 * PIXELS_PER_MINUTE * density)
                             drawLine(
-                                color = halfHourLineColor,
-                                start = Offset(-size.width, halfHourY),
-                                end = Offset(size.width * 2, halfHourY),
-                                strokeWidth = 0.5f
+                                color = halfHourLineColor.copy(alpha = 0.6f),  // Increased alpha for better visibility
+                                start = Offset(0f, halfHourY),
+                                end = Offset(size.width, halfHourY),
+                                strokeWidth = 1.0f,  // Slightly thicker
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)  // Add dash effect
                             )
                             
                             // We're removing the quarter-hour lines as they're causing visual clutter
@@ -335,32 +371,51 @@ fun DayTimelineView(
                         }
                     }
                     
-                    // Current time indicator (red needle)
-                    val needlePosition = (currentMinutesSinceMidnight * pixelsPerMinute).dp
-                    
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(24.dp)
-                            .offset(y = needlePosition - 12.dp) // Center the needle vertically
-                            .zIndex(10f), // Ensure it's above other elements
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Time label with current time attached to the needle
-                        Text(
-                            text = currentTime.format(DateTimeFormatter.ofPattern("h:mm a")),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Red,
-                            modifier = Modifier.padding(start = 4.dp, end = 4.dp)
-                        )
+                    // Current time indicator (red needle) - only show if it's today
+                    if (date.isEqual(LocalDate.now())) {
+                        val needlePosition = (currentMinutesSinceMidnight * pixelsPerMinute).dp
                         
-                        // Red line
+                        // Red line with arrow (right side)
                         Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .height(2.dp)
-                                .background(Color.Red)
-                        )
+                                .fillMaxWidth()
+                                .height(24.dp)
+                                .offset(y = needlePosition - 12.dp)
+                                .zIndex(10f)
+                          
+                        ) {
+                            // Right-pointing arrow that's part of the line
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp, 8.dp)
+                                    .offset(x = 0.dp, y = 8.dp)  // Position to align with the line and connect to time
+                            ) {
+                                Canvas(
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    val path = Path().apply {
+                                        moveTo(0f, 0f)  // Top-left
+                                        lineTo(size.width, size.height / 2)  // Middle-right
+                                        lineTo(0f, size.height)  // Bottom-left
+                                        close()
+                                    }
+                                    drawPath(
+                                        path = path,
+                                        color = Color.Red
+                                    )
+                                }
+                            }
+                            
+                            // Red line that connects to the arrow
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(2.dp)
+                                    .offset(y = 11.dp)  // Center vertically with the arrow
+                                    .padding(start = 4.dp)  // Start after the arrow
+                                    .background(Color.Red)
+                            )
+                        }
                     }
                 }
             }
@@ -534,7 +589,7 @@ private fun BoxScope.renderSingleEvent(
         event = event,
         onClick = { onEventClick(event.id) },
         modifier = Modifier
-            .fillMaxWidth(0.95f)
+            .fillMaxWidth()
             .height(eventHeight)
             .offset(y = topOffset)
     )
