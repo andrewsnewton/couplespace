@@ -140,28 +140,31 @@ fun DayTimelineView(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Day number in square box
+            // Day number in filled box with contrasting background
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
-                    .border(0.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)),
+                    .size(48.dp)  // Increased size
+                    .background(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(16.dp)  // Increased corner radius
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "${date.dayOfMonth}",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    style = MaterialTheme.typography.headlineSmall,  // Larger text
+                    fontWeight = FontWeight.ExtraBold,  // Bolder text
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
             
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(16.dp))  // Increased spacing
             
             // Day of week
             Text(
                 text = date.dayOfWeek.toString().lowercase().replaceFirstChar { it.uppercase() },
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,  // Slightly larger text
+                fontWeight = FontWeight.SemiBold,  // Slightly bolder
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
