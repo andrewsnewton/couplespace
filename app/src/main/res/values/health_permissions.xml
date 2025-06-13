@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <array name="health_permissions">
+        <!-- Heart Rate -->
+        <item>androidx.health.permission.HeartRate.READ_HEART_RATE</item>
+        <item>androidx.health.permission.HeartRate.WRITE_HEART_RATE</item>
+        
+        <!-- Steps -->
+        <item>androidx.health.permission.Steps.READ_STEPS</item>
+        <item>androidx.health.permission.Steps.WRITE_STEPS</item>
+        
+        <!-- Sleep -->
+        <item>androidx.health.permission.Sleep.READ_SLEEP</item>
+        <item>androidx.health.permission.Sleep.WRITE_SLEEP</item>
+        
+        <!-- Activity -->
+        <item>androidx.health.permission.Activity.READ_ACTIVITY</item>
+        <item>androidx.health.permission.Activity.WRITE_ACTIVITY</item>
+        
+        <!-- Nutrition -->
+        <item>androidx.health.permission.Nutrition.READ_NUTRITION</item>
+        <item>androidx.health.permission.Nutrition.WRITE_NUTRITION</item>
+        
+        <!-- Weight -->
+        <item>androidx.health.permission.Weight.READ_WEIGHT</item>
+        <item>androidx.health.permission.Weight.WRITE_WEIGHT</item>
+        
+        <!-- Distance -->
+        <item>androidx.health.permission.Distance.READ_DISTANCE</item>
+        <item>androidx.health.permission.Distance.WRITE_DISTANCE</item>
+        
+        <!-- Calories -->
+        <item>androidx.health.permission.Calories.READ_CALORIES</item>
+        <item>androidx.health.permission.Calories.WRITE_CALORIES</item>
+    </array>
+</resources>

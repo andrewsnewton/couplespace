@@ -23,7 +23,9 @@ import com.newton.couplespace.ui.theme.BondedTheme
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.newton.couplespace.services.NotificationService
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

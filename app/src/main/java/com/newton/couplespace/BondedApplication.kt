@@ -9,7 +9,10 @@ import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.newton.couplespace.BuildConfig
+import dagger.hilt.android.HiltAndroidApp
 
+@HiltAndroidApp
 class BondedApplication : Application() {
     
     companion object {
@@ -34,6 +37,14 @@ class BondedApplication : Application() {
             // Detect if we're running in an emulator
             val isEmulator = isEmulator()
             
+            // Initialize Firebase first to ensure it's fully set up
+            if (!FirebaseApp.getApps(this).isEmpty()) {
+                Log.d("BondedApp", "Firebase already initialized")
+            } else {
+                Log.d("BondedApp", "Initializing Firebase")
+                FirebaseApp.initializeApp(this)
+            }
+            
             if (isEmulator) {
                 // In emulator, we'll completely skip App Check to avoid attestation failures
                 Log.d("BondedApp", "Running in emulator, skipping App Check initialization")
@@ -44,15 +55,20 @@ class BondedApplication : Application() {
             // Only initialize App Check on real devices
             val firebaseAppCheck = FirebaseAppCheck.getInstance()
             
-            // For development, we'll use the Debug provider
-            val debugFactory = DebugAppCheckProviderFactory.getInstance()
-            firebaseAppCheck.installAppCheckProviderFactory(debugFactory)
+            // For development, we'll use the Debug provider with explicit activation
+            // This helps avoid the "Unknown calling package name" error
+            if (BuildConfig.DEBUG) {
+                Log.d("BondedApp", "Using Debug App Check provider for development")
+                val debugFactory = DebugAppCheckProviderFactory.getInstance()
+                firebaseAppCheck.installAppCheckProviderFactory(debugFactory)
+            } else {
+                // For production, use Play Integrity provider
+                Log.d("BondedApp", "Using Play Integrity App Check provider for production")
+                // The Play Integrity provider is installed automatically when the dependency is added
+            }
             
             // Enable auto refresh for the token
             firebaseAppCheck.setTokenAutoRefreshEnabled(true)
-            
-            // Log that the debug token has been registered in the Firebase Console
-            Log.d("BondedApp", "Using debug token registered in Firebase Console: A18529EF-72BD-44FD-B3A2-5D3B36DE52F7")
             
             Log.d("BondedApp", "Firebase App Check initialized successfully")
         } catch (e: Exception) {
