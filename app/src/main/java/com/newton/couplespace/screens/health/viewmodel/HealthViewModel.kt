@@ -30,7 +30,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.Serializable
-import java.time.*
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
@@ -72,6 +75,10 @@ class HealthViewModel @Inject constructor(
     private val _permissionRequestIntent = MutableLiveData<Intent?>(null)
     val permissionRequestIntent: LiveData<Intent?> = _permissionRequestIntent
 
+    // Track if we successfully loaded real data vs mock data
+    private val _loadedRealData = MutableStateFlow(false)
+    val loadedRealData: StateFlow<Boolean> = _loadedRealData.asStateFlow()
+    
     init {
         checkHealthConnectAvailability()
         // We'll load health data after checking permissions to avoid loading mock data unnecessarily
@@ -90,16 +97,49 @@ class HealthViewModel @Inject constructor(
             Log.d(TAG, "Health Connect available (refresh): ${_isHealthConnectAvailable.value}")
             
             if (_isHealthConnectAvailable.value) {
-                // Then check permissions
-                val granted = healthConnectRepository.checkPermissions()
-                Log.d(TAG, "Health Connect permissions granted (refresh): $granted")
-                val permissionsChanged = _hasHealthConnectPermissions.value != granted
-                _hasHealthConnectPermissions.value = granted
+                // Then check permissions - force a direct check with the Health Connect client
+                val healthConnectClient = HealthConnectClient.getOrCreate(getApplication())
+                val requiredPermissions = getRequiredPermissions()
                 
-                // If permissions changed and are now granted, reload health data
-                if (permissionsChanged && granted) {
-                    Log.d(TAG, "Permissions changed to granted, reloading health data")
-                    loadHealthData()
+                try {
+                    // Direct check with the Health Connect client
+                    val granted = healthConnectClient.permissionController.getGrantedPermissions()
+                    Log.d(TAG, "Direct check - granted permissions: ${granted.size}, required: ${requiredPermissions.size}")
+                    
+                    val hasAllPermissions = granted.containsAll(requiredPermissions)
+                    Log.d(TAG, "Health Connect permissions granted (direct check): $hasAllPermissions")
+                    
+                    // Also log any missing permissions
+                    if (!hasAllPermissions) {
+                        val missing = requiredPermissions.filter { !granted.contains(it) }
+                        Log.d(TAG, "Missing permissions: ${missing.joinToString()}")
+                    }
+                    
+                    val permissionsChanged = _hasHealthConnectPermissions.value != hasAllPermissions
+                    _hasHealthConnectPermissions.value = hasAllPermissions
+                    
+                    // If permissions changed and are now granted, reload health data
+                    if (permissionsChanged && hasAllPermissions) {
+                        Log.d(TAG, "Permissions changed to granted, reloading health data")
+                        loadHealthData()
+                    } else if (hasAllPermissions) {
+                        // Even if permissions didn't change but they are granted, reload data
+                        // This ensures we load real data after a permission grant
+                        Log.d(TAG, "Permissions already granted, reloading health data anyway")
+                        loadHealthData()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error checking permissions directly", e)
+                    // Fall back to repository check
+                    val granted = healthConnectRepository.checkPermissions()
+                    Log.d(TAG, "Health Connect permissions granted (repository fallback): $granted")
+                    _hasHealthConnectPermissions.value = granted
+                    
+                    if (granted) {
+                        loadHealthData()
+                    } else {
+                        loadMockData()
+                    }
                 }
             } else {
                 _hasHealthConnectPermissions.value = false
@@ -123,7 +163,7 @@ class HealthViewModel @Inject constructor(
                 }
                 
                 Log.d(TAG, "Health Connect is available, requesting permissions")
-                val permissions = healthConnectRepository.getRequiredPermissions()
+                val permissions = getRequiredPermissions()
                 
                 try {
                     // Try to use the standard permission request approach with rationale support
@@ -196,6 +236,19 @@ class HealthViewModel @Inject constructor(
     /**
      * Creates permission rationale messages for Health Connect permissions
      */
+    /**
+     * Gets the required Health Connect permissions directly
+     */
+    private fun getRequiredPermissions(): Set<String> {
+        return setOf(
+            HealthPermission.getReadPermission(StepsRecord::class),
+            HealthPermission.getReadPermission(HeartRateRecord::class),
+            HealthPermission.getReadPermission(SleepSessionRecord::class),
+            HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
+            HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)
+        )
+    }
+    
     private fun getPermissionRationaleMessages(permissions: Set<String>): Map<String, String> {
         val rationaleMessages = mutableMapOf<String, String>()
         
@@ -296,30 +349,46 @@ class HealthViewModel @Inject constructor(
     }
     
     /**
-     * Loads health data for the selected date
+     * Loads health data from Health Connect if available and permissions are granted,
+     * otherwise falls back to mock data
      */
     fun loadHealthData() {
         viewModelScope.launch {
             _isLoading.value = true
+            var loadedRealData = false
+            
             try {
-                // First check if permissions are granted
-                if (!_isHealthConnectAvailable.value || !_hasHealthConnectPermissions.value) {
-                    Log.d(TAG, "No Health Connect permissions or not available, loading mock data")
-                    Log.d(TAG, "Health Connect available: ${_isHealthConnectAvailable.value}, permissions granted: ${_hasHealthConnectPermissions.value}")
-                    loadMockData()
-                    // Still try to load partner data even if we don't have Health Connect permissions
-                    loadPartnerHealthData()
-                    return@launch
-                }
+                Log.d(TAG, "Loading health data - HC available: ${_isHealthConnectAvailable.value}, permissions: ${_hasHealthConnectPermissions.value}")
                 
-                // Force check permissions again to ensure they're still granted
-                val permissionsStillGranted = healthConnectRepository.checkPermissions()
-                if (!permissionsStillGranted) {
-                    Log.d(TAG, "Permissions were revoked, loading mock data")
-                    _hasHealthConnectPermissions.value = false
-                    loadMockData()
-                    loadPartnerHealthData()
-                    return@launch
+                // First, force a refresh of the permission status to ensure we have the latest
+                val healthConnectClient = HealthConnectClient.getOrCreate(getApplication())
+                val requiredPermissions = getRequiredPermissions()
+                
+                try {
+                    val granted = healthConnectClient.permissionController.getGrantedPermissions()
+                    val hasAllPermissions = granted.containsAll(requiredPermissions)
+                    Log.d(TAG, "Direct permission check before loading data: $hasAllPermissions (${granted.size} granted, ${requiredPermissions.size} required)")
+                    
+                    // Update the permission state with the latest value
+                    _hasHealthConnectPermissions.value = hasAllPermissions
+                    
+                    // If permissions are not granted, load mock data
+                    if (!hasAllPermissions) {
+                        Log.d(TAG, "Permissions not granted (direct check), loading mock data")
+                        loadMockData()
+                        loadPartnerHealthData()
+                        return@launch
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error checking permissions directly before loading data", e)
+                    // If we can't check permissions directly, fall back to repository check
+                    val permissionsGranted = healthConnectRepository.checkPermissions()
+                    if (!permissionsGranted) {
+                        Log.d(TAG, "Permissions not granted (repository check), loading mock data")
+                        loadMockData()
+                        loadPartnerHealthData()
+                        return@launch
+                    }
                 }
                 
                 val startOfDay = _selectedDate.value.atStartOfDay(ZoneId.systemDefault())
@@ -329,83 +398,92 @@ class HealthViewModel @Inject constructor(
                     endOfDay.toInstant()
                 )
                 
-                Log.d(TAG, "Loading health data for ${_selectedDate.value} with time range: $timeRange")
-                
+                // Load real data from Health Connect
+                Log.d(TAG, "Loading real health data from Health Connect for date: ${_selectedDate.value}")
                 val metrics = mutableListOf<HealthMetric>()
-                var hasLoadedAnyData = false
                 
-                // Collect steps data
+                // Get steps data
                 try {
-                    healthConnectRepository.getStepsForDate(timeRange).collect { stepsMetric ->
-                        Log.d(TAG, "Loaded steps data: $stepsMetric")
-                        metrics.add(stepsMetric)
-                        hasLoadedAnyData = true
+                    val steps = healthConnectRepository.getStepsData(timeRange)
+                    Log.d(TAG, "Steps data from Health Connect: $steps")
+                    if (steps > 0) {
+                        metrics.add(StepsMetric(
+                            id = "hc-steps-${_selectedDate.value}",
+                            userId = "user-id", // Should be replaced with actual user ID
+                            timestamp = _selectedDate.value.atTime(12, 0).toInstant(ZoneOffset.UTC),
+                            count = steps.toInt(),
+                            source = "Health Connect",
+                            isShared = false
+                        ))
+                        loadedRealData = true
+                        Log.d(TAG, "Loaded real steps data: $steps")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error loading steps", e)
+                    Log.e(TAG, "Error loading steps data", e)
                 }
                 
-                // Collect heart rate data
+                // Get calories data
                 try {
-                    healthConnectRepository.getHeartRateForDate(timeRange).collect { heartRateMetric ->
-                        Log.d(TAG, "Loaded heart rate data: $heartRateMetric")
-                        metrics.add(heartRateMetric)
-                        hasLoadedAnyData = true
+                    val calories = healthConnectRepository.getCaloriesData(timeRange)
+                    Log.d(TAG, "Calories data from Health Connect: $calories")
+                    if (calories > 0) {
+                        metrics.add(CaloriesBurnedMetric(
+                            id = "hc-calories-${_selectedDate.value}",
+                            userId = "user-id", // Should be replaced with actual user ID
+                            timestamp = _selectedDate.value.atTime(12, 0).toInstant(ZoneOffset.UTC),
+                            calories = calories.toInt(),
+                            source = "Health Connect",
+                            activity = "Daily Activity",
+                            isShared = false
+                        ))
+                        loadedRealData = true
+                        Log.d(TAG, "Loaded real calories data: $calories")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error loading heart rate", e)
+                    Log.e(TAG, "Error loading calories data", e)
                 }
                 
-                // Collect sleep data
+                // Get active minutes data
                 try {
-                    healthConnectRepository.getSleepDataForDate(timeRange).collect { sleepMetric ->
-                        Log.d(TAG, "Loaded sleep data: $sleepMetric")
-                        metrics.add(sleepMetric)
-                        hasLoadedAnyData = true
+                    val activeMinutes = healthConnectRepository.getActiveMinutesData(timeRange)
+                    Log.d(TAG, "Active minutes data from Health Connect: $activeMinutes")
+                    if (activeMinutes > 0) {
+                        metrics.add(ActiveMinutesMetric(
+                            id = "hc-active-${_selectedDate.value}",
+                            userId = "user-id", // Should be replaced with actual user ID
+                            timestamp = _selectedDate.value.atTime(12, 0).toInstant(ZoneOffset.UTC),
+                            minutes = activeMinutes.toInt(),
+                            intensity = ActiveMinutesMetric.ActivityIntensity.MODERATE,
+                            source = "Health Connect",
+                            isShared = false
+                        ))
+                        loadedRealData = true
+                        Log.d(TAG, "Loaded real active minutes data: $activeMinutes")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error loading sleep", e)
+                    Log.e(TAG, "Error loading active minutes data", e)
                 }
                 
-                // Collect calories burned data
-                try {
-                    healthConnectRepository.getCaloriesBurnedForDate(timeRange).collect { caloriesMetric ->
-                        Log.d(TAG, "Loaded calories data: $caloriesMetric")
-                        metrics.add(caloriesMetric)
-                        hasLoadedAnyData = true
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error loading calories burned", e)
-                }
-                
-                // Collect active minutes data
-                try {
-                    healthConnectRepository.getActiveMinutesForDate(timeRange).collect { activeMinutesMetric ->
-                        Log.d(TAG, "Loaded active minutes data: $activeMinutesMetric")
-                        metrics.add(activeMinutesMetric)
-                        hasLoadedAnyData = true
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error loading active minutes", e)
-                }
-                
-                if (!hasLoadedAnyData || metrics.isEmpty()) {
-                    Log.d(TAG, "No health metrics found, loading mock data")
+                // If we couldn't load any real data, fall back to mock data
+                if (metrics.isEmpty()) {
+                    Log.d(TAG, "No real data loaded, falling back to mock data")
                     loadMockData()
                 } else {
                     _healthMetrics.value = metrics
-                    Log.d(TAG, "Successfully loaded ${metrics.size} health metrics")
+                    Log.d(TAG, "Successfully loaded real health data: ${metrics.size} metrics")
                 }
                 
-                // Also load partner health data if available
+                // Always load partner data
                 loadPartnerHealthData()
+                
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading health data", e)
                 loadMockData()
-                // Still try to load partner data even if we had an error with our own data
                 loadPartnerHealthData()
             } finally {
                 _isLoading.value = false
+                _loadedRealData.value = loadedRealData
+                Log.d(TAG, "Health data loading complete, loaded real data: $loadedRealData")
             }
         }
     }

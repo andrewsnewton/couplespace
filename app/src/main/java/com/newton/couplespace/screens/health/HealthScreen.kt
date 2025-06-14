@@ -19,6 +19,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.livedata.observeAsState
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -100,6 +101,9 @@ fun HealthScreen(
     var isRequestingPermissions by remember { mutableStateOf(false) }
     
     // Launch the permission request intent when it becomes available
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Handle permission intent changes
     LaunchedEffect(permissionRequestIntent) {
         android.util.Log.d("HealthScreen", "Permission intent changed: $permissionRequestIntent")
         if (isHealthConnectAvailable) {
@@ -112,27 +116,44 @@ fun HealthScreen(
                     // Set requesting permissions state
                     isRequestingPermissions = true
                     
-                    // Launch the permission intent
-                    permissionLauncher.launch(intent)
+                    // Launch the permission intent in a safe way
+                    try {
+                        permissionLauncher.launch(intent)
+                    } catch (e: Exception) {
+                        android.util.Log.e("HealthScreen", "Error launching permission intent", e)
+                        e.printStackTrace()
+                    }
                     
-                    // Show a more visible snackbar
-                    snackbarHostState.showSnackbar(
-                        message = "Requesting Health Connect permissions...",
-                        duration = SnackbarDuration.Short,
-                        withDismissAction = true
-                    )
+                    // Use coroutineScope to show snackbar to avoid composition cancellation
+                    coroutineScope.launch {
+                        try {
+                            snackbarHostState.showSnackbar(
+                                message = "Requesting Health Connect permissions...",
+                                duration = SnackbarDuration.Short,
+                                withDismissAction = true
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e("HealthScreen", "Error showing snackbar", e)
+                        }
+                    }
                 } catch (e: Exception) {
-                    android.util.Log.e("HealthScreen", "Error launching permission intent", e)
+                    android.util.Log.e("HealthScreen", "Error in permission flow", e)
                     e.printStackTrace()
                     healthViewModel.loadMockData()
                     isRequestingPermissions = false
                     
-                    // Show a snackbar to inform the user
-                    snackbarHostState.showSnackbar(
-                        message = "Health Connect app not found. Using mock data instead.",
-                        duration = SnackbarDuration.Long,
-                        withDismissAction = true
-                    )
+                    // Show a snackbar to inform the user using coroutineScope
+                    coroutineScope.launch {
+                        try {
+                            snackbarHostState.showSnackbar(
+                                message = "Health Connect app not found. Using mock data instead.",
+                                duration = SnackbarDuration.Long,
+                                withDismissAction = true
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e("HealthScreen", "Error showing snackbar", e)
+                        }
+                    }
                 }
             }
         } else {
@@ -142,12 +163,18 @@ fun HealthScreen(
             healthViewModel.loadMockData()
             isRequestingPermissions = false
             
-            // Show a snackbar to inform the user
-            snackbarHostState.showSnackbar(
-                message = "Health Connect is not available on this device. Using mock data.",
-                duration = SnackbarDuration.Long,
-                withDismissAction = true
-            )
+            // Show a snackbar to inform the user using coroutineScope
+            coroutineScope.launch {
+                try {
+                    snackbarHostState.showSnackbar(
+                        message = "Health Connect is not available on this device. Using mock data.",
+                        duration = SnackbarDuration.Long,
+                        withDismissAction = true
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("HealthScreen", "Error showing snackbar", e)
+                }
+            }
         }
     }
     

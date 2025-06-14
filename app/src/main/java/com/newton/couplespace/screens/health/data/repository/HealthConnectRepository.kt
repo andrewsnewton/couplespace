@@ -104,4 +104,22 @@ interface HealthConnectRepository {
      * Get calories burned data for a date range
      */
     suspend fun getCaloriesBurnedData(startDate: LocalDate, endDate: LocalDate): Flow<List<CaloriesBurnedMetric>>
+    
+    /**
+     * Get steps data for a specific time range
+     * Returns the total number of steps in the time range
+     */
+    suspend fun getStepsData(timeRange: TimeRangeFilter): Long
+    
+    /**
+     * Get calories data for a specific time range
+     * Returns the total calories burned in the time range
+     */
+    suspend fun getCaloriesData(timeRange: TimeRangeFilter): Double
+    
+    /**
+     * Get active minutes data for a specific time range
+     * Returns the total active minutes in the time range
+     */
+    suspend fun getActiveMinutesData(timeRange: TimeRangeFilter): Double
 }

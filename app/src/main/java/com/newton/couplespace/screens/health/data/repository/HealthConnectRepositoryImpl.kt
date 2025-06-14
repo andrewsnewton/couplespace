@@ -3,22 +3,23 @@ package com.newton.couplespace.screens.health.data.repository
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.*
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.records.metadata.DataOrigin
-import androidx.health.connect.client.aggregate.*
+import androidx.health.connect.client.request.AggregateRequest
 import com.google.firebase.auth.FirebaseAuth
 import com.newton.couplespace.screens.health.data.models.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import java.io.Serializable
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -39,6 +40,10 @@ class HealthConnectRepositoryImpl @Inject constructor(
     private val context: Context,
     private val auth: FirebaseAuth
 ) : HealthConnectRepository {
+    
+    companion object {
+        private const val TAG = "HealthConnectRepositoryImpl"
+    }
     
     // Health Connect client
     override val healthConnectClient: HealthConnectClient? by lazy {
@@ -68,7 +73,7 @@ class HealthConnectRepositoryImpl @Inject constructor(
         HealthPermission.getReadPermission(HydrationRecord::class),
         HealthPermission.getReadPermission(OxygenSaturationRecord::class),
         HealthPermission.getReadPermission(RestingHeartRateRecord::class),
-        HealthPermission.getReadPermission(Vo2MaxRecord::class)
+        HealthPermission.getReadPermission(Vo2MaxRecord::class),                 
     )
 
     override fun getRequiredPermissions(): Set<String> = permissions
@@ -94,12 +99,33 @@ class HealthConnectRepositoryImpl @Inject constructor(
      * Check if the app has all necessary Health Connect permissions
      */
     override suspend fun checkPermissions(): Boolean {
-        if (!isHealthConnectAvailable()) return false
+        if (!isHealthConnectAvailable()) {
+            Log.d("HealthConnectRepositoryImpl", "Health Connect is not available, can't check permissions")
+            return false
+        }
         
         return try {
             val granted = healthConnectClient?.permissionController?.getGrantedPermissions()
-            granted?.containsAll(getRequiredPermissions()) ?: false
+            val requiredPermissions = getRequiredPermissions()
+            
+            Log.d("HealthConnectRepositoryImpl", "Checking permissions - granted: ${granted?.size ?: 0}, required: ${requiredPermissions.size}")
+            
+            if (granted == null) {
+                Log.d("HealthConnectRepositoryImpl", "No granted permissions found")
+                return false
+            }
+            
+            // Check each required permission individually and log which ones are missing
+            val missingPermissions = requiredPermissions.filter { !granted.contains(it) }
+            if (missingPermissions.isNotEmpty()) {
+                Log.d("HealthConnectRepositoryImpl", "Missing permissions: ${missingPermissions.joinToString()}")
+                return false
+            }
+            
+            Log.d("HealthConnectRepositoryImpl", "All required permissions are granted")
+            return true
         } catch (e: Exception) {
+            Log.e("HealthConnectRepositoryImpl", "Error checking permissions", e)
             false
         }
     }
@@ -841,5 +867,79 @@ class HealthConnectRepositoryImpl @Inject constructor(
         }
         
         return caloriesList
+    }
+    
+    /**
+     * Get steps data for a specific time range
+     */
+    override suspend fun getStepsData(timeRange: TimeRangeFilter): Long {
+        val client = healthConnectClient ?: return 0
+        
+        return try {
+            // Create aggregate request for steps
+            val stepsRequest = AggregateRequest(
+                metrics = setOf(StepsRecord.COUNT_TOTAL),
+                timeRangeFilter = timeRange
+            )
+            
+            // Execute the request
+            val stepsResponse = client.aggregate(stepsRequest)
+            val steps = stepsResponse[StepsRecord.COUNT_TOTAL] ?: 0L
+            
+            Log.d(TAG, "Retrieved $steps steps from Health Connect")
+            steps
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting steps data", e)
+            0
+        }
+    }
+    
+    /**
+     * Get calories data for a specific time range
+     */
+    override suspend fun getCaloriesData(timeRange: TimeRangeFilter): Double {
+        val client = healthConnectClient ?: return 0.0
+        
+        return try {
+            // Create aggregate request for calories
+            val caloriesRequest = AggregateRequest(
+                metrics = setOf(TotalCaloriesBurnedRecord.ENERGY_TOTAL),
+                timeRangeFilter = timeRange
+            )
+            
+            val caloriesResponse = client.aggregate(caloriesRequest)
+            val calories = caloriesResponse[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inCalories ?: 0.0
+            
+            Log.d(TAG, "Retrieved $calories calories from Health Connect")
+            calories
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting calories data", e)
+            0.0
+        }
+    }
+    
+    /**
+     * Get active minutes data for a specific time range
+     */
+    override suspend fun getActiveMinutesData(timeRange: TimeRangeFilter): Double {
+        val client = healthConnectClient ?: return 0.0
+        
+        return try {
+            // Create aggregate request for active minutes
+            val activeMinutesRequest = AggregateRequest(
+                metrics = setOf(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL),
+                timeRangeFilter = timeRange
+            )
+            
+            val activeMinutesResponse = client.aggregate(activeMinutesRequest)
+            val activeDuration = activeMinutesResponse[ExerciseSessionRecord.EXERCISE_DURATION_TOTAL] ?: Duration.ZERO
+            val activeMinutes = activeDuration.toMinutes().toDouble()
+            
+            Log.d(TAG, "Retrieved $activeMinutes active minutes from Health Connect")
+            activeMinutes
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting active minutes data", e)
+            0.0
+        }
     }
 }
