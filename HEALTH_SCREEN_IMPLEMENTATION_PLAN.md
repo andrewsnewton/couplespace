@@ -3,15 +3,15 @@
 ## Phase 1: Core Functionality Implementation
 
 ### 1. Date Selection & Navigation
-- [ ] Implement the calendar icon functionality in the TopAppBar
-- [ ] Add date picker dialog when calendar icon is clicked
-- [ ] Ensure date navigation updates all relevant data
+- [x] Implement the calendar icon functionality in the TopAppBar
+- [x] Add date picker dialog when calendar icon is clicked
+- [x] Ensure date navigation updates all relevant data
 
 ### 2. Health Metrics Integration
 - [x] Complete the HealthConnect integration for retrieving real health data
 - [x] Implement permission handling flow with clear user guidance
 - [x] Add data synchronization between device health apps and your app
-- [x] Add fallback to mock data when Health Connect is unavailable
+- [x] Replace mock data fallbacks with empty data when Health Connect is unavailable
 
 ### 3. Meal Tracking System
 - [ ] Enhance MealEntryDialog with food search functionality
@@ -20,6 +20,7 @@
 - [ ] Add meal photos and visual representation
 
 ### 4. Water Tracking Refinement
+- [x] Fix water intake tracking to properly update UI and persist data
 - [ ] Add water intake reminders with customizable intervals
 - [ ] Implement water goal setting based on user profile
 - [ ] Create visual water intake progress animation

@@ -76,4 +76,29 @@ interface NutritionRepository {
      * Get nutrition summary for a specific date
      */
     suspend fun getNutritionSummaryForDate(date: LocalDate): Flow<DailyNutritionSummary>
+    
+    /**
+     * Get the user's water intake goal
+     */
+    suspend fun getWaterGoal(): Flow<Int>
+    
+    /**
+     * Update the user's water intake goal
+     */
+    suspend fun updateWaterGoal(goalMl: Int): Boolean
+    
+    /**
+     * Set water intake reminder schedule
+     * @param intervalMinutes Interval between reminders in minutes
+     * @param startTime Start time for reminders (hour of day, 0-23)
+     * @param endTime End time for reminders (hour of day, 0-23)
+     * @param enabled Whether reminders are enabled
+     */
+    suspend fun setWaterReminderSchedule(intervalMinutes: Int, startTime: Int, endTime: Int, enabled: Boolean): Boolean
+    
+    /**
+     * Get the current water reminder schedule
+     * @return A map containing reminder settings: intervalMinutes, startTime, endTime, enabled
+     */
+    suspend fun getWaterReminderSchedule(): Flow<Map<String, Any>>
 }

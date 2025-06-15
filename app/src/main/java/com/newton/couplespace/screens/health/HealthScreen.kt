@@ -376,6 +376,9 @@ fun HealthScreen(
                 }
                 
                 // Water tracker
+                val waterReminderSettings = nutritionViewModel.waterReminderSettings.collectAsState().value
+                val waterReminderEnabled = nutritionViewModel.waterReminderEnabled.collectAsState().value
+                
                 WaterTrackerCard(
                     totalWaterIntake = nutritionViewModel.totalWaterIntake.collectAsState().value,
                     waterGoal = nutritionViewModel.waterGoal.collectAsState().value,
@@ -385,6 +388,16 @@ fun HealthScreen(
                         com.newton.couplespace.screens.health.data.models.HealthReminderType.WATER_INTAKE,
                         "Don't forget to stay hydrated today!"
                     ) },
+                    reminderEnabled = waterReminderEnabled,
+                    reminderSettings = waterReminderSettings,
+                    onUpdateReminderSettings = { interval, startHour, endHour, enabled ->
+                        nutritionViewModel.updateWaterReminderSettings(
+                            intervalMinutes = interval,
+                            startTime = startHour,
+                            endTime = endHour,
+                            enabled = enabled
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
                 

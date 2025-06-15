@@ -28,7 +28,8 @@ import javax.inject.Inject
 @HiltViewModel
 class NutritionViewModel @Inject constructor(
     private val nutritionRepository: NutritionRepository,
-    private val auth: FirebaseAuth
+    private val auth: FirebaseAuth,
+    private val waterReminderManager: com.newton.couplespace.screens.health.service.WaterReminderManager
 ) : ViewModel() {
     
     // Selected date for data display
@@ -67,8 +68,18 @@ class NutritionViewModel @Inject constructor(
     private val _currentMeal = MutableStateFlow<MealEntry?>(null)
     val currentMeal: StateFlow<MealEntry?> = _currentMeal.asStateFlow()
     
+    // Water reminder settings
+    private val _waterReminderSettings = MutableStateFlow<Map<String, Any>>(emptyMap())
+    val waterReminderSettings: StateFlow<Map<String, Any>> = _waterReminderSettings.asStateFlow()
+    
+    // Water reminder enabled state
+    private val _waterReminderEnabled = MutableStateFlow(false)
+    val waterReminderEnabled: StateFlow<Boolean> = _waterReminderEnabled.asStateFlow()
+    
     init {
         loadNutritionData()
+        loadWaterGoal()
+        loadWaterReminderSettings()
     }
     
     /**
@@ -322,15 +333,122 @@ class NutritionViewModel @Inject constructor(
     }
     
     /**
-     * Updates the water intake goal
+     * Loads the user's water goal from the repository
+     */
+    private fun loadWaterGoal() {
+        viewModelScope.launch {
+            try {
+                nutritionRepository.getWaterGoal().collect { goal ->
+                    println("DEBUG: ViewModel - Loaded water goal: $goal ml")
+                    _waterGoal.value = goal
+                }
+            } catch (e: Exception) {
+                println("DEBUG: ViewModel - Error loading water goal: ${e.message}")
+                // Keep the default water goal
+            }
+        }
+    }
+    
+    /**
+     * Updates the user's water goal
      */
     fun updateWaterGoal(goalMl: Int) {
-        if (goalMl <= 0) {
-            // Handle error - goal must be positive
+        if (goalMl < 500 || goalMl > 5000) {
+            println("DEBUG: ViewModel - Invalid water goal: $goalMl ml (must be between 500-5000)")
             return
         }
         
+        // Update UI immediately
         _waterGoal.value = goalMl
-        updateNutritionSummary() // Update summary with new goal
+        
+        // Save to repository
+        viewModelScope.launch {
+            try {
+                val result = nutritionRepository.updateWaterGoal(goalMl)
+                println("DEBUG: ViewModel - Water goal updated: $result")
+            } catch (e: Exception) {
+                println("DEBUG: ViewModel - Error updating water goal: ${e.message}")
+                // Keep the UI update even if the repository call fails
+            }
+        }
+    }
+    
+    /**
+     * Loads water reminder settings from the repository
+     */
+    private fun loadWaterReminderSettings() {
+        viewModelScope.launch {
+            try {
+                nutritionRepository.getWaterReminderSchedule().collect { settings ->
+                    println("DEBUG: ViewModel - Loaded water reminder settings: $settings")
+                    // Make sure we have all required fields with proper types
+                    val validatedSettings = mapOf<String, Any>(
+                        "intervalMinutes" to ((settings["intervalMinutes"] as? Number)?.toInt() ?: 60),
+                        "startHour" to ((settings["startHour"] as? Number)?.toInt() ?: 8),
+                        "endHour" to ((settings["endHour"] as? Number)?.toInt() ?: 20),
+                        "enabled" to (settings["enabled"] as? Boolean ?: false),
+                        "lastUpdated" to (settings["lastUpdated"] ?: System.currentTimeMillis())
+                    )
+                    _waterReminderSettings.value = validatedSettings
+                    _waterReminderEnabled.value = validatedSettings["enabled"] as Boolean
+                    println("DEBUG: ViewModel - Validated water reminder settings: $validatedSettings")
+                }
+            } catch (e: Exception) {
+                println("DEBUG: ViewModel - Error loading water reminder settings: ${e.message}")
+                // Set default values on error
+                _waterReminderSettings.value = mapOf(
+                    "intervalMinutes" to 60,
+                    "startHour" to 8,
+                    "endHour" to 20,
+                    "enabled" to false,
+                    "lastUpdated" to System.currentTimeMillis()
+                )
+                _waterReminderEnabled.value = false
+            }
+        }
+    }
+    
+    /**
+     * Update water reminder settings
+     */
+    fun updateWaterReminderSettings(intervalMinutes: Int, startTime: Int, endTime: Int, enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                println("DEBUG: ViewModel - Updating water reminder settings: interval=$intervalMinutes, start=$startTime, end=$endTime, enabled=$enabled")
+                
+                // Update settings in repository
+                val result = nutritionRepository.setWaterReminderSchedule(
+                    intervalMinutes = intervalMinutes,
+                    startTime = startTime,
+                    endTime = endTime,
+                    enabled = enabled
+                )
+                
+                if (result) {
+                    println("DEBUG: ViewModel - Water reminder settings updated successfully")
+                    // Reload settings to reflect changes
+                    loadWaterReminderSettings()
+                    
+                    // Update reminder schedule - only pass the enabled parameter
+                    waterReminderManager.updateReminderSchedule(enabled)
+                } else {
+                    println("DEBUG: ViewModel - Failed to update water reminder settings")
+                }
+            } catch (e: Exception) {
+                println("DEBUG: ViewModel - Error updating water reminder settings: ${e.message}")
+            }
+        }
+    }
+    
+    /**
+     * Toggles water reminder enabled state
+     */
+    fun toggleWaterReminders(enabled: Boolean) {
+        val currentSettings = _waterReminderSettings.value
+        val intervalMinutes = currentSettings["intervalMinutes"] as? Int ?: 60
+        val startTime = currentSettings["startHour"] as? Int ?: 8
+        val endTime = currentSettings["endHour"] as? Int ?: 20
+        
+        updateWaterReminderSettings(intervalMinutes, startTime, endTime, enabled)
     }
 }

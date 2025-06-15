@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -31,9 +33,18 @@ fun WaterTrackerCard(
     onAddWater: (Int) -> Unit,
     onUpdateGoal: (Int) -> Unit,
     onSendReminder: () -> Unit,
+    reminderEnabled: Boolean = false,
+    reminderSettings: Map<String, Any> = emptyMap(),
+    onUpdateReminderSettings: (Int, Int, Int, Boolean) -> Unit = { _, _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var showGoalDialog by remember { mutableStateOf(false) }
+    var showReminderDialog by remember { mutableStateOf(false) }
+    
+    // Reminder settings state - initialize from saved settings and preserve across recompositions
+    var reminderInterval by remember(reminderSettings) { mutableStateOf(reminderSettings["intervalMinutes"] as? Int ?: 60) }
+    var reminderStartTime by remember(reminderSettings) { mutableStateOf(reminderSettings["startHour"] as? Int ?: 8) }
+    var reminderEndTime by remember(reminderSettings) { mutableStateOf(reminderSettings["endHour"] as? Int ?: 20) }
     
     Card(
         modifier = modifier,
@@ -62,15 +73,18 @@ fun WaterTrackerCard(
                 Row {
                     // Reminder button
                     IconButton(
-                        onClick = onSendReminder,
+                        onClick = { showReminderDialog = true },
                         modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Notifications,
-                            contentDescription = "Remind Partner",
-                            tint = MaterialTheme.colorScheme.primary
+                            contentDescription = "Water Reminders",
+                            tint = if (reminderEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         )
                     }
+                    
+                    // Spacer to maintain layout after removing test button
+                    Spacer(modifier = Modifier.width(4.dp))
                     
                     // Settings button
                     IconButton(
@@ -111,19 +125,8 @@ fun WaterTrackerCard(
                 )
                 
                 QuickAddButton(
-                    amount = 200,
-                    onClick = { 
-                        println("DEBUG: WaterTrackerCard - Add 200ml button clicked")
-                        onAddWater(200) 
-                    }
-                )
-                
-                QuickAddButton(
-                    amount = 300,
-                    onClick = { 
-                        println("DEBUG: WaterTrackerCard - Add 300ml button clicked")
-                        onAddWater(300) 
-                    }
+                    amount = 250,
+                    onClick = { onAddWater(250) }
                 )
                 
                 QuickAddButton(
@@ -135,6 +138,21 @@ fun WaterTrackerCard(
                 )
             }
         }
+    }
+    
+    // Water reminder dialog
+    if (showReminderDialog) {
+        WaterReminderDialog(
+            enabled = reminderEnabled,
+            intervalMinutes = reminderInterval,
+            startHour = reminderStartTime,
+            endHour = reminderEndTime,
+            onDismiss = { showReminderDialog = false },
+            onConfirm = { interval, start, end, enabled ->
+                onUpdateReminderSettings(interval, start, end, enabled)
+                showReminderDialog = false
+            }
+        )
     }
     
     // Goal setting dialog
@@ -319,4 +337,221 @@ fun QuickAddButton(
             )
         }
     }
+}
+
+/**
+ * Dialog for setting water intake goal
+ */
+@Composable
+fun WaterGoalDialog(
+    currentGoal: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var goalValue by remember { mutableStateOf(currentGoal.toString()) }
+    var isError by remember { mutableStateOf(false) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set Water Goal") },
+        text = {
+            Column {
+                Text(
+                    "Set your daily water intake goal (500-5000 ml)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                OutlinedTextField(
+                    value = goalValue,
+                    onValueChange = { 
+                        goalValue = it.filter { char -> char.isDigit() }
+                        isError = goalValue.toIntOrNull()?.let { it < 500 || it > 5000 } ?: true
+                    },
+                    label = { Text("Goal (ml)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = isError,
+                    supportingText = if (isError) {
+                        { Text("Please enter a value between 500 and 5000 ml") }
+                    } else null,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                // Preset buttons
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    listOf(1500, 2000, 2500, 3000).forEach { preset ->
+                        SuggestionChip(
+                            onClick = { 
+                                goalValue = preset.toString()
+                                isError = false
+                            },
+                            label = { Text("$preset ml") }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val goal = goalValue.toIntOrNull() ?: return@Button
+                    if (goal in 500..5000) {
+                        onConfirm(goal)
+                    }
+                },
+                enabled = !isError && goalValue.isNotEmpty()
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Dialog for configuring water intake reminders
+ */
+@Composable
+fun WaterReminderDialog(
+    enabled: Boolean,
+    intervalMinutes: Int,
+    startHour: Int,
+    endHour: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int, Int, Boolean) -> Unit
+) {
+    // Use remember with the input parameters as keys to preserve state but update when inputs change
+    var isEnabled by remember(enabled) { mutableStateOf(enabled) }
+    var interval by remember(intervalMinutes) { mutableStateOf(intervalMinutes) }
+    var start by remember(startHour) { mutableStateOf(startHour) }
+    var end by remember(endHour) { mutableStateOf(endHour) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Water Reminder Settings") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Enable/disable switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Enable Reminders")
+                    Switch(
+                        checked = isEnabled,
+                        onCheckedChange = { isEnabled = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.primary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Reminder interval
+                Text("Reminder Interval")
+                
+                // Interval selection chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    FilterChip(
+                        selected = interval == 30,
+                        onClick = { interval = 30 },
+                        label = { Text("30 min") },
+                        enabled = isEnabled
+                    )
+                    
+                    FilterChip(
+                        selected = interval == 60,
+                        onClick = { interval = 60 },
+                        label = { Text("60 min") },
+                        enabled = isEnabled
+                    )
+                    
+                    FilterChip(
+                        selected = interval == 90,
+                        onClick = { interval = 90 },
+                        label = { Text("90 min") },
+                        enabled = isEnabled
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Active hours
+                Text("Active Hours", style = MaterialTheme.typography.titleMedium)
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Start time selector
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("From", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        com.newton.couplespace.ui.components.TimePickerWheel(
+                            value = start,
+                            onValueChange = { start = it },
+                            range = 0..23,
+                            enabled = isEnabled,
+                            format = { "%02d:00".format(it) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(16.dp))
+                    
+                    // End time selector
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("To", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        com.newton.couplespace.ui.components.TimePickerWheel(
+                            value = end,
+                            onValueChange = { end = it },
+                            range = 0..23,
+                            enabled = isEnabled,
+                            format = { "%02d:00".format(it) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(interval, start, end, isEnabled) }
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

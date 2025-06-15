@@ -6,17 +6,28 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.work.Configuration
+import androidx.work.WorkManager
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.newton.couplespace.BuildConfig
+import com.newton.couplespace.screens.health.service.WaterReminderManager
+import com.newton.couplespace.screens.health.service.WaterReminderWorkerFactory
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 @HiltAndroidApp
-class BondedApplication : Application() {
+class BondedApplication : Application(), Configuration.Provider {    
+    @Inject
+    lateinit var waterReminderManager: WaterReminderManager
+    
+    @Inject
+    lateinit var workerFactory: WaterReminderWorkerFactory
     
     companion object {
         const val CHANNEL_ID = "bonded_notifications"
+        const val WATER_REMINDER_CHANNEL_ID = "water_reminder_notifications"
     }
     
     override fun onCreate() {
@@ -30,6 +41,32 @@ class BondedApplication : Application() {
         
         // Create notification channel for Android O and above
         createNotificationChannel()
+        
+        // Initialize water reminder system
+        initializeWaterReminders()
+    }
+    
+    /**
+     * Initialize water reminder system
+     */
+    private fun initializeWaterReminders() {
+        try {
+            // Initialize the water reminder manager
+            waterReminderManager.initialize()
+            Log.d("BondedApp", "Water reminder system initialized successfully")
+        } catch (e: Exception) {
+            Log.e("BondedApp", "Error initializing water reminder system", e)
+        }
+    }
+    
+    /**
+     * Configure WorkManager with our custom factory
+     */
+    override fun getWorkManagerConfiguration(): Configuration {
+        return Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .setMinimumLoggingLevel(Log.INFO)
+            .build()
     }
     
     private fun initializeAppCheck() {
@@ -100,17 +137,30 @@ class BondedApplication : Application() {
     
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Bonded Notifications"
-            val descriptionText = "Notifications from the Bonded app"
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-            }
-            
-            // Register the channel with the system
             val notificationManager: NotificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+                
+            // Main app notifications channel
+            val mainChannel = NotificationChannel(
+                CHANNEL_ID, 
+                "Bonded Notifications", 
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Notifications from the Bonded app"
+            }
+            
+            // Water reminder notifications channel
+            val waterChannel = NotificationChannel(
+                WATER_REMINDER_CHANNEL_ID, 
+                "Water Reminders", 
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Water intake reminder notifications"
+            }
+            
+            // Register the channels with the system
+            notificationManager.createNotificationChannel(mainChannel)
+            notificationManager.createNotificationChannel(waterChannel)
         }
     }
 }

@@ -30,10 +30,11 @@ class NutritionRepositoryImpl @Inject constructor(
     private val auth: FirebaseAuth,
     private val foodDataCentralApi: FoodDataCentralApi
 ) : NutritionRepository {
-    
+
     private val mealsCollection = firestore.collection("meals")
-    private val waterIntakeCollection = firestore.collection("water_intake") // Changed collection name to match potential existing structure
-    
+    private val waterIntakeCollection = firestore.collection("water_intake")
+    private val userSettingsCollection = firestore.collection("user_settings")
+
     /**
      * Search for foods using the USDA FoodData Central API
      */
@@ -45,7 +46,7 @@ class NutritionRepositoryImpl @Inject constructor(
             Result.failure(e)
         }
     }
-    
+
     /**
      * Search for food with UI state management
      */
@@ -77,7 +78,7 @@ class NutritionRepositoryImpl @Inject constructor(
             emit(getMockFoodItems(query))
         }
     }
-    
+
     /**
      * Get mock food items for fallback
      */
@@ -109,24 +110,24 @@ class NutritionRepositoryImpl @Inject constructor(
             )
         )
     }
-    
+
     /**
      * Get food details by ID from the USDA FoodData Central API
      */
     override suspend fun getFoodDetails(fdcId: String): Result<FoodItem> {
         return try {
             val response = foodDataCentralApi.getFoodDetails(fdcId)
-            
+
             // Extract the relevant nutritional information
             val description = response.description ?: "Unknown Food"
             val servingSize = response.servingSize ?: 100.0
             val servingSizeUnit = response.servingSizeUnit ?: "g"
-            
+
             var calories = 0
             var protein = 0f
             var carbs = 0f
             var fat = 0f
-            
+
             // Parse nutrient data
             response.foodNutrients.forEach { nutrient ->
                 when (nutrient.nutrient.name) {
@@ -136,7 +137,7 @@ class NutritionRepositoryImpl @Inject constructor(
                     "Total lipid (fat)" -> fat = nutrient.amount.toFloat()
                 }
             }
-            
+
             val foodItem = FoodItem(
                 fdcId = fdcId,
                 description = description,
@@ -149,33 +150,33 @@ class NutritionRepositoryImpl @Inject constructor(
                 carbs = carbs,
                 fat = fat
             )
-            
+
             Result.success(foodItem)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
-    
+
     /**
      * Get meals for a specific date from Firebase
      */
     override suspend fun getMealsForDate(date: LocalDate): Flow<List<MealEntry>> = flow {
         val userId = auth.currentUser?.uid ?: "mock-user-id"
-        
+
         try {
             val startOfDay = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val endOfDay = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            
+
             val mealsSnapshot = mealsCollection
                 .whereEqualTo("userId", userId)
                 .whereGreaterThanOrEqualTo("timestamp", startOfDay)
                 .whereLessThan("timestamp", endOfDay)
                 .get()
                 .await()
-            
+
             val meals = mealsSnapshot.documents.mapNotNull { doc ->
                 val data = doc.data ?: return@mapNotNull null
-                
+
                 MealEntry(
                     id = doc.id,
                     userId = data["userId"] as? String ?: userId,
@@ -188,7 +189,7 @@ class NutritionRepositoryImpl @Inject constructor(
                     isShared = data["isShared"] as? Boolean ?: false
                 )
             }
-            
+
             emit(meals)
         } catch (e: Exception) {
             // In a real app, log the error
@@ -220,13 +221,13 @@ class NutritionRepositoryImpl @Inject constructor(
             emit(mockMeals)
         }
     }
-    
+
     /**
      * Get all meal history from Firebase
      */
     override suspend fun getMealHistory(): Flow<List<MealEntry>> = flow {
         val userId = auth.currentUser?.uid ?: "mock-user-id"
-        
+
         try {
             val mealsSnapshot = mealsCollection
                 .whereEqualTo("userId", userId)
@@ -234,10 +235,10 @@ class NutritionRepositoryImpl @Inject constructor(
                 .limit(30) // Limit to last 30 meals
                 .get()
                 .await()
-            
+
             val meals = mealsSnapshot.documents.mapNotNull { doc ->
                 val data = doc.data ?: return@mapNotNull null
-                
+
                 MealEntry(
                     id = doc.id,
                     userId = data["userId"] as? String ?: userId,
@@ -250,7 +251,7 @@ class NutritionRepositoryImpl @Inject constructor(
                     isShared = data["isShared"] as? Boolean ?: false
                 )
             }
-            
+
             emit(meals)
         } catch (e: Exception) {
             // In a real app, log the error
@@ -282,13 +283,13 @@ class NutritionRepositoryImpl @Inject constructor(
             emit(mockMeals)
         }
     }
-    
+
     /**
      * Log a meal to Firebase
      */
     override suspend fun logMeal(mealEntry: MealEntry): String {
         val userId = auth.currentUser?.uid ?: return "error-no-user"
-        
+
         try {
             val mealData = hashMapOf(
                 "userId" to userId,
@@ -301,7 +302,7 @@ class NutritionRepositoryImpl @Inject constructor(
                 "isShared" to mealEntry.isShared,
                 "createdAt" to com.google.firebase.Timestamp.now()
             )
-            
+
             val docRef = mealsCollection.add(mealData).await()
             return docRef.id
         } catch (e: Exception) {
@@ -309,14 +310,14 @@ class NutritionRepositoryImpl @Inject constructor(
             return "error-${UUID.randomUUID()}"
         }
     }
-    
+
     /**
      * Save a meal - alternative method for logging a meal
      */
     override suspend fun saveMeal(mealEntry: MealEntry): String {
         return logMeal(mealEntry)
     }
-    
+
     /**
      * Delete a meal from Firebase
      */
@@ -327,7 +328,7 @@ class NutritionRepositoryImpl @Inject constructor(
             // In a real app, log the error
         }
     }
-    
+
     /**
      * Update meal shared status
      */
@@ -344,25 +345,25 @@ class NutritionRepositoryImpl @Inject constructor(
             android.util.Log.e("NutritionRepository", "Error updating meal shared status: ${e.message}")
         }
     }
-    
+
     /**
      * Log water intake to Firebase
      */
     override suspend fun logWaterIntake(amount: Int): String {
         val userId = auth.currentUser?.uid ?: return "no-user-id"
-        
+
         if (amount <= 0) {
             println("DEBUG: Invalid water amount: $amount")
             return "invalid-amount"
         }
-        
+
         try {
             println("DEBUG: Attempting to save water intake to collection: water_intake")
-            
+
             val waterIntakeId = UUID.randomUUID().toString()
             val timestamp = System.currentTimeMillis()
             val today = LocalDate.now().toString()
-            
+
             // Create a document with a specific ID for better tracking
             val waterIntakeData = hashMapOf(
                 "id" to waterIntakeId,
@@ -373,13 +374,13 @@ class NutritionRepositoryImpl @Inject constructor(
                 "source" to "User Input",
                 "isShared" to false
             )
-            
+
             println("DEBUG: Saving water intake: $amount ml with ID: $waterIntakeId for date: $today")
-            
+
             // Use document().set() with a specific ID for more reliable retrieval
             waterIntakeCollection.document(waterIntakeId).set(waterIntakeData).await()
             println("DEBUG: Successfully saved water intake with ID: $waterIntakeId")
-            
+
             // Verify the document was saved by reading it back
             val savedDoc = waterIntakeCollection.document(waterIntakeId).get().await()
             if (savedDoc.exists()) {
@@ -387,7 +388,7 @@ class NutritionRepositoryImpl @Inject constructor(
             } else {
                 println("DEBUG: WARNING: Document was not found after saving!")
             }
-            
+
             return waterIntakeId
         } catch (e: Exception) {
             // Log the error
@@ -396,7 +397,7 @@ class NutritionRepositoryImpl @Inject constructor(
             return "error-${UUID.randomUUID()}"
         }
     }
-    
+
     /**
      * Record water intake
      */
@@ -408,7 +409,7 @@ class NutritionRepositoryImpl @Inject constructor(
         delay(500)
         return result
     }
-    
+
     /**
      * Get water intake for a specific date from Firebase
      */
@@ -417,14 +418,14 @@ class NutritionRepositoryImpl @Inject constructor(
             println("DEBUG: No user ID available for water intake")
             return@flow emit(emptyList())
         }
-        
+
         try {
             val startOfDay = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val endOfDay = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val dateString = date.toString()
-            
+
             println("DEBUG: Fetching water intake for date: $date, userId: $userId")
-            
+
             // Try multiple query approaches to ensure we find the data
             // First try by timestamp range
             var waterIntakeSnapshot = waterIntakeCollection
@@ -433,7 +434,7 @@ class NutritionRepositoryImpl @Inject constructor(
                 .whereLessThan("timestamp", endOfDay)
                 .get()
                 .await()
-            
+
             // If no results, try by date string if available
             if (waterIntakeSnapshot.isEmpty) {
                 println("DEBUG: No results with timestamp query, trying date string query")
@@ -443,7 +444,7 @@ class NutritionRepositoryImpl @Inject constructor(
                     .get()
                     .await()
             }
-            
+
             // If still no results, try getting all user's records and filter manually
             if (waterIntakeSnapshot.isEmpty) {
                 println("DEBUG: No results with date string query, fetching all user records")
@@ -451,25 +452,25 @@ class NutritionRepositoryImpl @Inject constructor(
                     .whereEqualTo("userId", userId)
                     .get()
                     .await()
-                
+
                 println("DEBUG: Found ${waterIntakeSnapshot.documents.size} total water records for user")
             }
-            
+
             println("DEBUG: Found ${waterIntakeSnapshot.documents.size} water intake records for date: $date")
-            
+
             // Dump all document data for debugging
             waterIntakeSnapshot.documents.forEach { doc ->
                 println("DEBUG: Document ${doc.id} data: ${doc.data}")
             }
-            
+
             // Create individual water intake metrics for each record
             val waterIntakeMetrics = waterIntakeSnapshot.documents.map { doc ->
                 val amount = doc.getLong("amount")?.toInt() ?: 0
                 val timestamp = doc.getLong("timestamp") ?: startOfDay
                 val docId = doc.id
-                
+
                 println("DEBUG: Water record - ID: $docId, Amount: $amount ml, Timestamp: ${Instant.ofEpochMilli(timestamp)}")
-                
+
                 WaterIntakeMetric(
                     id = docId,
                     userId = userId,
@@ -479,10 +480,10 @@ class NutritionRepositoryImpl @Inject constructor(
                     isShared = doc.getBoolean("isShared") ?: false
                 )
             }
-            
+
             val totalAmount = waterIntakeMetrics.sumOf { it.amount }
             println("DEBUG: Total water intake: $totalAmount ml from ${waterIntakeMetrics.size} records")
-            
+
             // Always emit at least one record with the current total
             if (waterIntakeMetrics.isEmpty()) {
                 println("DEBUG: No water intake records found, creating a default zero record")
@@ -501,7 +502,7 @@ class NutritionRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             println("DEBUG: Error fetching water intake: ${e.message}")
             e.printStackTrace()
-            
+
             // Create a default zero record on error
             val defaultMetric = WaterIntakeMetric(
                 id = UUID.randomUUID().toString(),
@@ -514,7 +515,7 @@ class NutritionRepositoryImpl @Inject constructor(
             emit(listOf(defaultMetric))
         }
     }
-    
+
     /**
      * Get nutrition summary for a specific date
      */
@@ -527,49 +528,46 @@ class NutritionRepositoryImpl @Inject constructor(
             totalFat = 0,
             totalWaterIntake = 0
         ))
-        
+
         try {
             // Get meals for the date
             val meals = getMealsForDate(date).first()
-            
+
             // Get water intake for the date
             val waterIntakeMetrics = getWaterIntakeForDate(date).first()
-            
+
             // Calculate totals
             var totalCalories = 0
             var totalProtein = 0
             var totalCarbs = 0
             var totalFat = 0
             var totalWaterIntake = 0
-            
-            // Process meals if any exist
+
+            // Sum up calories and nutrients from meals
             for (meal in meals) {
                 totalCalories += meal.calories
                 totalProtein += meal.protein.toInt()
                 totalCarbs += meal.carbs.toInt()
                 totalFat += meal.fat.toInt()
             }
-            
-            // Calculate total water intake from all water intake metrics
-            totalWaterIntake = waterIntakeMetrics.sumOf { it.amount }
-            println("DEBUG: Calculated total water intake in summary: $totalWaterIntake ml from ${waterIntakeMetrics.size} records")
-            
-            val nutritionSummary = DailyNutritionSummary(
+
+            // Sum up water intake
+            for (metric in waterIntakeMetrics) {
+                totalWaterIntake += metric.amount
+            }
+
+            // Emit the nutrition summary
+            emit(DailyNutritionSummary(
                 date = date,
                 totalCalories = totalCalories,
                 totalProtein = totalProtein,
                 totalCarbs = totalCarbs,
                 totalFat = totalFat,
                 totalWaterIntake = totalWaterIntake
-            )
-            
-            emit(nutritionSummary)
+            ))
+
         } catch (e: Exception) {
-            // Log the error
-            println("Error getting nutrition summary: ${e.message}")
-            e.printStackTrace()
-            
-            // Return empty summary
+            // Emit empty summary on error
             emit(DailyNutritionSummary(
                 date = date,
                 totalCalories = 0,
@@ -579,5 +577,118 @@ class NutritionRepositoryImpl @Inject constructor(
                 totalWaterIntake = 0
             ))
         }
+    }
+
+    /**
+     * Get the current water reminder schedule
+     */
+    override suspend fun getWaterReminderSchedule(): Flow<Map<String, Any>> = flow {
+        try {
+            val userId = auth.currentUser?.uid ?: throw IllegalStateException("User not authenticated")
+            val settingsDoc = userSettingsCollection.document(userId).get().await()
+
+            if (settingsDoc.exists() && settingsDoc.contains("waterReminders")) {
+                @Suppress("UNCHECKED_CAST")
+                val reminderSettings = settingsDoc.get("waterReminders") as? Map<String, Any> ?: emptyMap()
+                emit(reminderSettings)
+            } else {
+                // Default reminder settings
+                emit(mapOf(
+                    "intervalMinutes" to 60,
+                    "startHour" to 8,
+                    "endHour" to 20,
+                    "enabled" to false
+                ))
+            }
+        } catch (e: Exception) {
+            // Default reminder settings on error
+            emit(mapOf(
+                "intervalMinutes" to 60,
+                "startHour" to 8,
+                "endHour" to 20,
+                "enabled" to false
+            ))
+        }
+    }
+
+    /**
+     * Get the user's water intake goal
+     */
+    override suspend fun getWaterGoal(): Flow<Int> = flow {
+        try {
+            val userId = auth.currentUser?.uid ?: throw IllegalStateException("User not authenticated")
+            val settingsDoc = userSettingsCollection.document(userId).get().await()
+
+            if (settingsDoc.exists() && settingsDoc.contains("waterGoal")) {
+                val waterGoal = settingsDoc.getLong("waterGoal")?.toInt() ?: 2000
+                emit(waterGoal)
+            } else {
+                // Default water goal if not set
+                emit(2000)
+            }
+        } catch (e: Exception) {
+            // Default water goal on error
+            emit(2000)
+        }
+    } // CLOSING BRACE ADDED HERE FOR getWaterGoal()
+
+    /**
+     * Update the user's water intake goal
+     */
+    override suspend fun updateWaterGoal(goalMl: Int): Boolean {
+        return try {
+            val userId = auth.currentUser?.uid ?: throw IllegalStateException("User not authenticated")
+
+            // Validate goal amount
+            val validGoal = goalMl.coerceIn(500, 5000)
+
+            // Update or create user settings document
+            userSettingsCollection.document(userId)
+                .set(mapOf("waterGoal" to validGoal), com.google.firebase.firestore.SetOptions.merge())
+                .await()
+
+            true
+        } catch (e: Exception) {
+            false
+        }
+    } // CLOSING BRACE ADDED HERE FOR updateWaterGoal()
+
+/**
+ * Set water intake reminder schedule
+ */
+override suspend fun setWaterReminderSchedule(
+    intervalMinutes: Int, 
+    startTime: Int, 
+    endTime: Int, 
+    enabled: Boolean
+): Boolean {
+    return try {
+        val userId = auth.currentUser?.uid ?: throw IllegalStateException("User not authenticated")
+
+        // Validate parameters
+        val validInterval = intervalMinutes.coerceIn(15, 240) // Between 15 minutes and 4 hours
+        val validStartHour = startTime.coerceIn(0, 23)
+        val validEndHour = endTime.coerceIn(0, 23)
+
+        // Create reminder settings map
+        val reminderSettings = mapOf(
+            "waterReminders" to mapOf(
+                "intervalMinutes" to validInterval,
+                "startHour" to validStartHour,
+                "endHour" to validEndHour,
+                "enabled" to enabled,
+                "lastUpdated" to Instant.now().toEpochMilli()
+            )
+        )
+
+        // Update user settings
+        userSettingsCollection.document(userId)
+            .set(reminderSettings, com.google.firebase.firestore.SetOptions.merge())
+            .await()
+
+        true
+    } catch (e: Exception) {
+        false
+    }
     }
 }
