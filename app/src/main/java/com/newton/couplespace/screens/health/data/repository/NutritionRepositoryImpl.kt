@@ -8,6 +8,7 @@ import com.newton.couplespace.screens.health.data.models.MealEntry
 import com.newton.couplespace.screens.health.data.models.WaterIntakeMetric
 import com.newton.couplespace.screens.health.data.remote.FoodDataCentralApi
 import com.newton.couplespace.screens.health.data.remote.FoodSearchResponse
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.first
@@ -31,7 +32,7 @@ class NutritionRepositoryImpl @Inject constructor(
 ) : NutritionRepository {
     
     private val mealsCollection = firestore.collection("meals")
-    private val waterIntakeCollection = firestore.collection("waterIntake")
+    private val waterIntakeCollection = firestore.collection("water_intake") // Changed collection name to match potential existing structure
     
     /**
      * Search for foods using the USDA FoodData Central API
@@ -348,91 +349,191 @@ class NutritionRepositoryImpl @Inject constructor(
      * Log water intake to Firebase
      */
     override suspend fun logWaterIntake(amount: Int): String {
-        val userId = auth.currentUser?.uid ?: return "error-no-user"
+        val userId = auth.currentUser?.uid ?: return "no-user-id"
+        
+        if (amount <= 0) {
+            println("DEBUG: Invalid water amount: $amount")
+            return "invalid-amount"
+        }
         
         try {
+            println("DEBUG: Attempting to save water intake to collection: water_intake")
+            
+            val waterIntakeId = UUID.randomUUID().toString()
+            val timestamp = System.currentTimeMillis()
+            val today = LocalDate.now().toString()
+            
+            // Create a document with a specific ID for better tracking
             val waterIntakeData = hashMapOf(
+                "id" to waterIntakeId,
                 "userId" to userId,
                 "amount" to amount,
-                "timestamp" to System.currentTimeMillis(),
-                "createdAt" to com.google.firebase.Timestamp.now()
+                "timestamp" to timestamp,
+                "date" to today,
+                "source" to "User Input",
+                "isShared" to false
             )
             
-            val docRef = waterIntakeCollection.add(waterIntakeData).await()
-            return docRef.id
+            println("DEBUG: Saving water intake: $amount ml with ID: $waterIntakeId for date: $today")
+            
+            // Use document().set() with a specific ID for more reliable retrieval
+            waterIntakeCollection.document(waterIntakeId).set(waterIntakeData).await()
+            println("DEBUG: Successfully saved water intake with ID: $waterIntakeId")
+            
+            // Verify the document was saved by reading it back
+            val savedDoc = waterIntakeCollection.document(waterIntakeId).get().await()
+            if (savedDoc.exists()) {
+                println("DEBUG: Verified document exists with data: ${savedDoc.data}")
+            } else {
+                println("DEBUG: WARNING: Document was not found after saving!")
+            }
+            
+            return waterIntakeId
         } catch (e: Exception) {
-            // In a real app, log the error
+            // Log the error
+            println("DEBUG: Error saving water intake: ${e.message}")
+            e.printStackTrace()
             return "error-${UUID.randomUUID()}"
         }
     }
     
     /**
-     * Record water intake - alternative method for logging water intake
+     * Record water intake
      */
     override suspend fun recordWaterIntake(amount: Int): String {
-        return logWaterIntake(amount)
+        println("DEBUG: Recording water intake: $amount ml")
+        val result = logWaterIntake(amount)
+        println("DEBUG: Water intake record result: $result")
+        // Add a small delay to ensure Firebase has time to process the write
+        delay(500)
+        return result
     }
     
     /**
      * Get water intake for a specific date from Firebase
      */
     override suspend fun getWaterIntakeForDate(date: LocalDate): Flow<List<WaterIntakeMetric>> = flow {
-        val userId = auth.currentUser?.uid ?: "mock-user-id"
+        val userId = auth.currentUser?.uid ?: run {
+            println("DEBUG: No user ID available for water intake")
+            return@flow emit(emptyList())
+        }
         
         try {
             val startOfDay = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val endOfDay = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val dateString = date.toString()
             
-            val waterIntakeSnapshot = waterIntakeCollection
+            println("DEBUG: Fetching water intake for date: $date, userId: $userId")
+            
+            // Try multiple query approaches to ensure we find the data
+            // First try by timestamp range
+            var waterIntakeSnapshot = waterIntakeCollection
                 .whereEqualTo("userId", userId)
                 .whereGreaterThanOrEqualTo("timestamp", startOfDay)
                 .whereLessThan("timestamp", endOfDay)
                 .get()
                 .await()
             
-            var totalWaterIntake = 0
-            
-            waterIntakeSnapshot.documents.forEach { doc ->
-                val amount = doc.getLong("amount")?.toInt() ?: 0
-                totalWaterIntake += amount
+            // If no results, try by date string if available
+            if (waterIntakeSnapshot.isEmpty) {
+                println("DEBUG: No results with timestamp query, trying date string query")
+                waterIntakeSnapshot = waterIntakeCollection
+                    .whereEqualTo("userId", userId)
+                    .whereEqualTo("date", dateString)
+                    .get()
+                    .await()
             }
             
-            val waterIntakeMetric = WaterIntakeMetric(
-                id = UUID.randomUUID().toString(),
-                userId = userId,
-                timestamp = date.atStartOfDay(ZoneId.systemDefault()).toInstant(),
-                amount = totalWaterIntake,
-                source = "Firebase",
-                isShared = false
-            )
+            // If still no results, try getting all user's records and filter manually
+            if (waterIntakeSnapshot.isEmpty) {
+                println("DEBUG: No results with date string query, fetching all user records")
+                waterIntakeSnapshot = waterIntakeCollection
+                    .whereEqualTo("userId", userId)
+                    .get()
+                    .await()
+                
+                println("DEBUG: Found ${waterIntakeSnapshot.documents.size} total water records for user")
+            }
             
-            emit(listOf(waterIntakeMetric))
+            println("DEBUG: Found ${waterIntakeSnapshot.documents.size} water intake records for date: $date")
+            
+            // Dump all document data for debugging
+            waterIntakeSnapshot.documents.forEach { doc ->
+                println("DEBUG: Document ${doc.id} data: ${doc.data}")
+            }
+            
+            // Create individual water intake metrics for each record
+            val waterIntakeMetrics = waterIntakeSnapshot.documents.map { doc ->
+                val amount = doc.getLong("amount")?.toInt() ?: 0
+                val timestamp = doc.getLong("timestamp") ?: startOfDay
+                val docId = doc.id
+                
+                println("DEBUG: Water record - ID: $docId, Amount: $amount ml, Timestamp: ${Instant.ofEpochMilli(timestamp)}")
+                
+                WaterIntakeMetric(
+                    id = docId,
+                    userId = userId,
+                    timestamp = Instant.ofEpochMilli(timestamp),
+                    amount = amount,
+                    source = doc.getString("source") ?: "Firebase",
+                    isShared = doc.getBoolean("isShared") ?: false
+                )
+            }
+            
+            val totalAmount = waterIntakeMetrics.sumOf { it.amount }
+            println("DEBUG: Total water intake: $totalAmount ml from ${waterIntakeMetrics.size} records")
+            
+            // Always emit at least one record with the current total
+            if (waterIntakeMetrics.isEmpty()) {
+                println("DEBUG: No water intake records found, creating a default zero record")
+                val defaultMetric = WaterIntakeMetric(
+                    id = UUID.randomUUID().toString(),
+                    userId = userId,
+                    timestamp = date.atStartOfDay(ZoneId.systemDefault()).toInstant(),
+                    amount = 0,
+                    source = "Default",
+                    isShared = false
+                )
+                emit(listOf(defaultMetric))
+            } else {
+                emit(waterIntakeMetrics)
+            }
         } catch (e: Exception) {
-            // Fallback to mock data
-            val mockWaterIntake = WaterIntakeMetric(
+            println("DEBUG: Error fetching water intake: ${e.message}")
+            e.printStackTrace()
+            
+            // Create a default zero record on error
+            val defaultMetric = WaterIntakeMetric(
                 id = UUID.randomUUID().toString(),
                 userId = userId,
                 timestamp = date.atStartOfDay(ZoneId.systemDefault()).toInstant(),
-                amount = 1500, // ml
-                source = "Mock Data",
+                amount = 0,
+                source = "Error Fallback",
                 isShared = false
             )
-            emit(listOf(mockWaterIntake))
+            emit(listOf(defaultMetric))
         }
     }
     
     /**
-     * Get nutrition summary for a specific date from Firebase
+     * Get nutrition summary for a specific date
      */
     override suspend fun getNutritionSummaryForDate(date: LocalDate): Flow<DailyNutritionSummary> = flow {
-        val userId = auth.currentUser?.uid ?: "mock-user-id"
+        val userId = auth.currentUser?.uid ?: return@flow emit(DailyNutritionSummary(
+            date = date,
+            totalCalories = 0,
+            totalProtein = 0,
+            totalCarbs = 0,
+            totalFat = 0,
+            totalWaterIntake = 0
+        ))
         
         try {
             // Get meals for the date
             val meals = getMealsForDate(date).first()
             
             // Get water intake for the date
-            val waterIntake = getWaterIntakeForDate(date).first()
+            val waterIntakeMetrics = getWaterIntakeForDate(date).first()
             
             // Calculate totals
             var totalCalories = 0
@@ -441,14 +542,17 @@ class NutritionRepositoryImpl @Inject constructor(
             var totalFat = 0
             var totalWaterIntake = 0
             
-            meals.forEach { meal ->
+            // Process meals if any exist
+            for (meal in meals) {
                 totalCalories += meal.calories
                 totalProtein += meal.protein.toInt()
                 totalCarbs += meal.carbs.toInt()
                 totalFat += meal.fat.toInt()
             }
             
-            // Add water intake amount from the WaterIntakeMetric
+            // Calculate total water intake from all water intake metrics
+            totalWaterIntake = waterIntakeMetrics.sumOf { it.amount }
+            println("DEBUG: Calculated total water intake in summary: $totalWaterIntake ml from ${waterIntakeMetrics.size} records")
             
             val nutritionSummary = DailyNutritionSummary(
                 date = date,
@@ -461,17 +565,19 @@ class NutritionRepositoryImpl @Inject constructor(
             
             emit(nutritionSummary)
         } catch (e: Exception) {
-            // In a real app, log the error
-            // For now, emit mock data
-            val mockNutritionSummary = DailyNutritionSummary(
+            // Log the error
+            println("Error getting nutrition summary: ${e.message}")
+            e.printStackTrace()
+            
+            // Return empty summary
+            emit(DailyNutritionSummary(
                 date = date,
-                totalCalories = 1800,
-                totalProtein = 85,
-                totalCarbs = 220,
-                totalFat = 60,
-                totalWaterIntake = 1500 // ml
-            )
-            emit(mockNutritionSummary)
+                totalCalories = 0,
+                totalProtein = 0,
+                totalCarbs = 0,
+                totalFat = 0,
+                totalWaterIntake = 0
+            ))
         }
     }
 }

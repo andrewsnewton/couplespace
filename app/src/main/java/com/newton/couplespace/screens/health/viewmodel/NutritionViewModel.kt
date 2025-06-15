@@ -7,7 +7,9 @@ import com.newton.couplespace.screens.health.data.models.FoodItem
 import com.newton.couplespace.screens.health.data.models.MealEntry
 import com.newton.couplespace.screens.health.data.models.WaterIntakeMetric
 import com.newton.couplespace.screens.health.data.repository.NutritionRepository
+import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +27,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class NutritionViewModel @Inject constructor(
-    private val nutritionRepository: NutritionRepository
+    private val nutritionRepository: NutritionRepository,
+    private val auth: FirebaseAuth
 ) : ViewModel() {
     
     // Selected date for data display
@@ -84,22 +87,29 @@ class NutritionViewModel @Inject constructor(
             _isLoading.value = true
             
             val date = _selectedDate.value
+            println("DEBUG: ViewModel - Loading nutrition data for date: $date")
             
             // Load meals
             nutritionRepository.getMealsForDate(date).collect { mealsList ->
                 _meals.value = mealsList
+                println("DEBUG: ViewModel - Loaded ${mealsList.size} meals")
             }
             
             // Load water intake
+            println("DEBUG: ViewModel - Fetching water intake data")
             nutritionRepository.getWaterIntakeForDate(date).collect { waterIntakeList ->
+                println("DEBUG: ViewModel - Received ${waterIntakeList.size} water intake records")
                 _waterIntake.value = waterIntakeList
-                _totalWaterIntake.value = waterIntakeList.sumOf { it.amount }
+                val totalWater = waterIntakeList.sumOf { it.amount }
+                println("DEBUG: ViewModel - Setting total water intake to: $totalWater ml")
+                _totalWaterIntake.value = totalWater
             }
             
             // Create nutrition summary
             updateNutritionSummary()
             
             _isLoading.value = false
+            println("DEBUG: ViewModel - Nutrition data loading complete")
         }
     }
     
@@ -263,13 +273,51 @@ class NutritionViewModel @Inject constructor(
      */
     fun recordWaterIntake(amountMl: Int) {
         if (amountMl <= 0) {
-            // Handle error - amount must be positive
+            println("DEBUG: ViewModel - Invalid water amount: $amountMl")
             return
         }
         
+        println("DEBUG: ViewModel - Recording water intake: $amountMl ml")
+        
+        // Immediately update the UI with the new water intake
+        val currentTotal = _totalWaterIntake.value
+        val newTotal = currentTotal + amountMl
+        println("DEBUG: ViewModel - Updating UI immediately: $currentTotal + $amountMl = $newTotal ml")
+        _totalWaterIntake.value = newTotal
+        
+        // Create a permanent water intake record (not temporary)
+        val waterIntakeId = UUID.randomUUID().toString()
+        val waterIntake = WaterIntakeMetric(
+            id = waterIntakeId,
+            userId = auth.currentUser?.uid ?: "current-user",
+            timestamp = Instant.now(),
+            amount = amountMl,
+            source = "User Input",
+            isShared = false
+        )
+        
+        // Add to the current list
+        val currentList = _waterIntake.value.toMutableList()
+        currentList.add(waterIntake)
+        _waterIntake.value = currentList
+        
+        // Then save to repository WITHOUT refreshing data
         viewModelScope.launch {
-            nutritionRepository.recordWaterIntake(amountMl)
-            loadNutritionData() // Refresh data to include the new water intake
+            try {
+                val result = nutritionRepository.recordWaterIntake(amountMl)
+                println("DEBUG: ViewModel - Water intake recorded with result: $result")
+                
+                // Don't refresh the data from Firebase immediately
+                // This prevents the UI from resetting
+                
+                // Schedule a delayed refresh to ensure data consistency
+                delay(2000) // Wait 2 seconds before refreshing
+                println("DEBUG: ViewModel - Performing delayed refresh of nutrition data")
+                loadNutritionData()
+            } catch (e: Exception) {
+                println("DEBUG: ViewModel - Error recording water intake: ${e.message}")
+                // Keep the UI update even if the repository call fails
+            }
         }
     }
     

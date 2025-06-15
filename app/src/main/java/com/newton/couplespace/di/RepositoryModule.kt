@@ -1,15 +1,12 @@
 package com.newton.couplespace.di
 
 import android.content.Context
-import com.newton.couplespace.screens.health.data.repository.CoupleHealthRepository
-import com.newton.couplespace.screens.health.data.repository.CoupleHealthRepositoryImpl
-import com.newton.couplespace.screens.health.data.repository.HealthConnectRepository
-import com.newton.couplespace.screens.health.data.repository.HealthConnectRepositoryImpl
-import com.newton.couplespace.screens.health.data.repository.NutritionRepository
-import com.newton.couplespace.screens.health.data.repository.NutritionRepositoryImpl
+import androidx.health.connect.client.HealthConnectClient
+import com.newton.couplespace.screens.health.data.repository.*
 import dagger.Module
 import dagger.Provides
 import dagger.Binds
+import dagger.Lazy
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
@@ -36,14 +33,71 @@ object RepositoryModule {
     fun provideFirebaseFirestore(): FirebaseFirestore {
         return FirebaseFirestore.getInstance()
     }
+    
+    @Provides
+    @Singleton
+    fun provideHealthConnectClient(@ApplicationContext context: Context): HealthConnectClient? {
+        return try {
+            HealthConnectClient.getOrCreate(context)
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    @Provides
+    @Singleton
+    fun provideHealthConnectCaloriesRepository(
+        healthConnectClient: HealthConnectClient?,
+        auth: FirebaseAuth
+    ): HealthConnectCaloriesRepository {
+        return HealthConnectCaloriesRepository(healthConnectClient, auth)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideHealthConnectActivityRepository(
+        healthConnectClient: HealthConnectClient?,
+        auth: FirebaseAuth
+    ): HealthConnectActivityRepository {
+        return HealthConnectActivityRepository(healthConnectClient, auth)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideHealthConnectHeartRateRepository(
+        healthConnectClient: HealthConnectClient?,
+        auth: FirebaseAuth
+    ): HealthConnectHeartRateRepository {
+        return HealthConnectHeartRateRepository(healthConnectClient, auth)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideHealthConnectSleepRepository(
+        healthConnectClient: HealthConnectClient?,
+        auth: FirebaseAuth
+    ): HealthConnectSleepRepository {
+        return HealthConnectSleepRepository(healthConnectClient, auth)
+    }
 
     @Provides
     @Singleton
     fun provideHealthConnectRepository(
         @ApplicationContext context: Context,
-        auth: FirebaseAuth
+        auth: FirebaseAuth,
+        caloriesRepository: Lazy<HealthConnectCaloriesRepository>,
+        activityRepository: Lazy<HealthConnectActivityRepository>,
+        heartRateRepository: Lazy<HealthConnectHeartRateRepository>,
+        sleepRepository: Lazy<HealthConnectSleepRepository>
     ): HealthConnectRepository {
-        return HealthConnectRepositoryImpl(context, auth)
+        return HealthConnectRepositoryImpl(
+            context,
+            auth,
+            caloriesRepository,
+            activityRepository,
+            heartRateRepository,
+            sleepRepository
+        )
     }
 
     @Provides

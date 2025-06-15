@@ -13,6 +13,7 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
@@ -57,11 +58,11 @@ class HealthViewModel @Inject constructor(
     // Health metrics for the current day
     private val _healthMetrics = MutableStateFlow<List<HealthMetric>>(emptyList())
     val healthMetrics: StateFlow<List<HealthMetric>> = _healthMetrics.asStateFlow()
-    
+
     // Partner health metrics for the current day
     private val _partnerHealthMetrics = MutableStateFlow<List<HealthMetric>>(emptyList())
     val partnerHealthMetrics: StateFlow<List<HealthMetric>> = _partnerHealthMetrics.asStateFlow()
-    
+
     // Flag to indicate if partner data is available
     private val _hasPartnerData = MutableStateFlow(false)
     val hasPartnerData: StateFlow<Boolean> = _hasPartnerData.asStateFlow()
@@ -78,7 +79,7 @@ class HealthViewModel @Inject constructor(
     // Track if we successfully loaded real data vs mock data
     private val _loadedRealData = MutableStateFlow(false)
     val loadedRealData: StateFlow<Boolean> = _loadedRealData.asStateFlow()
-    
+
     init {
         checkHealthConnectAvailability()
         // We'll load health data after checking permissions to avoid loading mock data unnecessarily
@@ -95,29 +96,29 @@ class HealthViewModel @Inject constructor(
             // First check if Health Connect is available
             _isHealthConnectAvailable.value = HealthConnectClient.getSdkStatus(getApplication()) == HealthConnectClient.SDK_AVAILABLE
             Log.d(TAG, "Health Connect available (refresh): ${_isHealthConnectAvailable.value}")
-            
+
             if (_isHealthConnectAvailable.value) {
                 // Then check permissions - force a direct check with the Health Connect client
                 val healthConnectClient = HealthConnectClient.getOrCreate(getApplication())
                 val requiredPermissions = getRequiredPermissions()
-                
+
                 try {
                     // Direct check with the Health Connect client
                     val granted = healthConnectClient.permissionController.getGrantedPermissions()
                     Log.d(TAG, "Direct check - granted permissions: ${granted.size}, required: ${requiredPermissions.size}")
-                    
+
                     val hasAllPermissions = granted.containsAll(requiredPermissions)
                     Log.d(TAG, "Health Connect permissions granted (direct check): $hasAllPermissions")
-                    
+
                     // Also log any missing permissions
                     if (!hasAllPermissions) {
                         val missing = requiredPermissions.filter { !granted.contains(it) }
                         Log.d(TAG, "Missing permissions: ${missing.joinToString()}")
                     }
-                    
+
                     val permissionsChanged = _hasHealthConnectPermissions.value != hasAllPermissions
                     _hasHealthConnectPermissions.value = hasAllPermissions
-                    
+
                     // If permissions changed and are now granted, reload health data
                     if (permissionsChanged && hasAllPermissions) {
                         Log.d(TAG, "Permissions changed to granted, reloading health data")
@@ -134,7 +135,7 @@ class HealthViewModel @Inject constructor(
                     val granted = healthConnectRepository.checkPermissions()
                     Log.d(TAG, "Health Connect permissions granted (repository fallback): $granted")
                     _hasHealthConnectPermissions.value = granted
-                    
+
                     if (granted) {
                         loadHealthData()
                     } else {
@@ -153,7 +154,7 @@ class HealthViewModel @Inject constructor(
             try {
                 Log.d(TAG, "Checking if Health Connect is available")
                 val isAvailable = HealthConnectClient.getSdkStatus(getApplication()) == HealthConnectClient.SDK_AVAILABLE
-                
+
                 if (!isAvailable) {
                     Log.d(TAG, "Health Connect is not available on this device")
                     _isHealthConnectAvailable.value = false
@@ -161,25 +162,25 @@ class HealthViewModel @Inject constructor(
                     loadMockData()
                     return@launch
                 }
-                
+
                 Log.d(TAG, "Health Connect is available, requesting permissions")
                 val permissions = getRequiredPermissions()
-                
+
                 try {
                     // Try to use the standard permission request approach with rationale support
                     val healthConnectClient = HealthConnectClient.getOrCreate(getApplication())
-                    
+
                     // Create the intent for requesting permissions using the contract
                     val requestPermissionContract = PermissionController.createRequestPermissionResultContract()
                     val intent = requestPermissionContract.createIntent(getApplication(), permissions)
-                    
+
                     // Create a Bundle for the rationale messages
                     val rationaleBundle = Bundle()
                     val rationaleMessages = getPermissionRationaleMessages(permissions)
                     rationaleMessages.forEach { (permission, message) ->
                         rationaleBundle.putString(permission, message)
                     }
-                    
+
                     // Add rationale information and app name
                     intent.putExtra(
                         "android.health.connect.extra.REQUEST_PERMISSIONS_RATIONALE_MESSAGES",
@@ -189,17 +190,17 @@ class HealthViewModel @Inject constructor(
                         "android.health.connect.extra.REQUEST_PERMISSIONS_APP_NAME",
                         getApplicationName()
                     )
-                    
+
                     Log.d(TAG, "Permission request intent created with rationale support: $intent")
                     _permissionRequestIntent.value = intent
                 } catch (e: Exception) {
                     Log.e(TAG, "Error with standard permission request, trying fallback", e)
-                    
+
                     // Fallback to direct settings intent if the standard approach fails
                     try {
                         val settingsIntent = Intent("android.health.connect.action.HEALTH_HOME_SETTINGS")
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        
+
                         Log.d(TAG, "Created fallback settings intent: $settingsIntent")
                         _permissionRequestIntent.value = settingsIntent
                     } catch (e2: Exception) {
@@ -211,7 +212,7 @@ class HealthViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "Error in requestHealthConnectPermissions", e)
                 e.printStackTrace()
-                
+
                 // Fallback to load mock data if Health Connect is not available
                 _isHealthConnectAvailable.value = false
                 _hasHealthConnectPermissions.value = false
@@ -219,7 +220,7 @@ class HealthViewModel @Inject constructor(
             }
         }
     }
-    
+
     /**
      * Gets the application name for use in permission rationales
      */
@@ -232,7 +233,7 @@ class HealthViewModel @Inject constructor(
             getApplication<Application>().getString(stringId)
         }
     }
-    
+
     /**
      * Creates permission rationale messages for Health Connect permissions
      */
@@ -241,71 +242,81 @@ class HealthViewModel @Inject constructor(
      */
     private fun getRequiredPermissions(): Set<String> {
         return setOf(
+            // Step data
             HealthPermission.getReadPermission(StepsRecord::class),
+
+            // Heart rate data
             HealthPermission.getReadPermission(HeartRateRecord::class),
+
+            // Sleep data
             HealthPermission.getReadPermission(SleepSessionRecord::class),
+
+            // Calories data
             HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
-            HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)
+            HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
+
+            // Exercise data - critical for active minutes
+            HealthPermission.getReadPermission(ExerciseSessionRecord::class)
         )
     }
-    
+
     private fun getPermissionRationaleMessages(permissions: Set<String>): Map<String, String> {
         val rationaleMessages = mutableMapOf<String, String>()
-        
+
         // Group permissions by category for better user understanding
         val hasStepsPermission = permissions.contains(HealthPermission.getReadPermission(StepsRecord::class))
         val hasHeartRatePermission = permissions.contains(HealthPermission.getReadPermission(HeartRateRecord::class))
         val hasSleepPermission = permissions.contains(HealthPermission.getReadPermission(SleepSessionRecord::class))
         val hasCaloriesPermission = permissions.contains(HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class))
         val hasActivityPermission = permissions.contains(HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class))
-        
+
         // Add rationale messages for each permission category
         if (hasStepsPermission) {
-            rationaleMessages[HealthPermission.getReadPermission(StepsRecord::class)] = 
+            rationaleMessages[HealthPermission.getReadPermission(StepsRecord::class)] =
                 "To track your daily step count and help you meet your fitness goals"
         }
-        
+
         if (hasHeartRatePermission) {
-            rationaleMessages[HealthPermission.getReadPermission(HeartRateRecord::class)] = 
+            rationaleMessages[HealthPermission.getReadPermission(HeartRateRecord::class)] =
                 "To monitor your heart rate and provide health insights"
         }
-        
+
         if (hasSleepPermission) {
-            rationaleMessages[HealthPermission.getReadPermission(SleepSessionRecord::class)] = 
+            rationaleMessages[HealthPermission.getReadPermission(SleepSessionRecord::class)] =
                 "To analyze your sleep patterns and help improve your rest"
         }
-        
+
         if (hasCaloriesPermission) {
-            rationaleMessages[HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)] = 
+            rationaleMessages[HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)] =
                 "To track calories burned and help with nutrition planning"
         }
-        
+
         if (hasActivityPermission) {
-            rationaleMessages[HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)] = 
+            rationaleMessages[HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)] =
                 "To monitor your active minutes and help you stay fit"
         }
-        
+
         // Add a default message for any other permissions
         permissions.forEach { permission ->
             if (!rationaleMessages.containsKey(permission)) {
                 rationaleMessages[permission] = "To provide you with comprehensive health tracking features"
             }
         }
-        
+
         return rationaleMessages
     }
-    
+
     fun clearPermissionRequestIntent() {
         _permissionRequestIntent.value = null
     }
-    
+
     private fun checkHealthConnectAvailability() {
         viewModelScope.launch {
             try {
                 Log.d(TAG, "Checking Health Connect availability")
                 _isHealthConnectAvailable.value = HealthConnectClient.getSdkStatus(getApplication()) == HealthConnectClient.SDK_AVAILABLE
                 Log.d(TAG, "Health Connect available: ${_isHealthConnectAvailable.value}")
-                
+
                 if (_isHealthConnectAvailable.value) {
                     checkPermissions()
                 } else {
@@ -321,7 +332,7 @@ class HealthViewModel @Inject constructor(
             }
         }
     }
-    
+
     private fun checkPermissions() {
         viewModelScope.launch {
             try {
@@ -335,7 +346,7 @@ class HealthViewModel @Inject constructor(
                 val granted = healthConnectRepository.checkPermissions()
                 Log.d(TAG, "Health Connect permissions granted: $granted")
                 _hasHealthConnectPermissions.value = granted
-                
+
                 // Always load health data after checking permissions
                 // If permissions are granted, it will load real data
                 // If not, it will load mock data inside loadHealthData()
@@ -347,7 +358,7 @@ class HealthViewModel @Inject constructor(
             }
         }
     }
-    
+
     /**
      * Loads health data from Health Connect if available and permissions are granted,
      * otherwise falls back to mock data
@@ -356,22 +367,22 @@ class HealthViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             var loadedRealData = false
-            
+
             try {
                 Log.d(TAG, "Loading health data - HC available: ${_isHealthConnectAvailable.value}, permissions: ${_hasHealthConnectPermissions.value}")
-                
+
                 // First, force a refresh of the permission status to ensure we have the latest
                 val healthConnectClient = HealthConnectClient.getOrCreate(getApplication())
                 val requiredPermissions = getRequiredPermissions()
-                
+
                 try {
                     val granted = healthConnectClient.permissionController.getGrantedPermissions()
                     val hasAllPermissions = granted.containsAll(requiredPermissions)
                     Log.d(TAG, "Direct permission check before loading data: $hasAllPermissions (${granted.size} granted, ${requiredPermissions.size} required)")
-                    
+
                     // Update the permission state with the latest value
                     _hasHealthConnectPermissions.value = hasAllPermissions
-                    
+
                     // If permissions are not granted, load mock data
                     if (!hasAllPermissions) {
                         Log.d(TAG, "Permissions not granted (direct check), loading mock data")
@@ -390,18 +401,18 @@ class HealthViewModel @Inject constructor(
                         return@launch
                     }
                 }
-                
+
                 val startOfDay = _selectedDate.value.atStartOfDay(ZoneId.systemDefault())
                 val endOfDay = _selectedDate.value.plusDays(1).atStartOfDay(ZoneId.systemDefault())
                 val timeRange = TimeRangeFilter.between(
                     startOfDay.toInstant(),
                     endOfDay.toInstant()
                 )
-                
+
                 // Load real data from Health Connect
                 Log.d(TAG, "Loading real health data from Health Connect for date: ${_selectedDate.value}")
                 val metrics = mutableListOf<HealthMetric>()
-                
+
                 // Get steps data
                 try {
                     val steps = healthConnectRepository.getStepsData(timeRange)
@@ -421,7 +432,7 @@ class HealthViewModel @Inject constructor(
                 } catch (e: Exception) {
                     Log.e(TAG, "Error loading steps data", e)
                 }
-                
+
                 // Get calories data
                 try {
                     val calories = healthConnectRepository.getCaloriesData(timeRange)
@@ -442,7 +453,7 @@ class HealthViewModel @Inject constructor(
                 } catch (e: Exception) {
                     Log.e(TAG, "Error loading calories data", e)
                 }
-                
+
                 // Get active minutes data
                 try {
                     val activeMinutes = healthConnectRepository.getActiveMinutesData(timeRange)
@@ -463,7 +474,7 @@ class HealthViewModel @Inject constructor(
                 } catch (e: Exception) {
                     Log.e(TAG, "Error loading active minutes data", e)
                 }
-                
+
                 // If we couldn't load any real data, fall back to mock data
                 if (metrics.isEmpty()) {
                     Log.d(TAG, "No real data loaded, falling back to mock data")
@@ -472,10 +483,10 @@ class HealthViewModel @Inject constructor(
                     _healthMetrics.value = metrics
                     Log.d(TAG, "Successfully loaded real health data: ${metrics.size} metrics")
                 }
-                
+
                 // Always load partner data
                 loadPartnerHealthData()
-                
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading health data", e)
                 loadMockData()
@@ -487,7 +498,7 @@ class HealthViewModel @Inject constructor(
             }
         }
     }
-    
+
     /**
      * Loads partner health data if available
      */
@@ -501,10 +512,10 @@ class HealthViewModel @Inject constructor(
                     Log.d(TAG, "No connected partner found")
                     return@launch
                 }
-                
+
                 val startOfDay = _selectedDate.value.atStartOfDay(ZoneId.systemDefault())
                 val endOfDay = _selectedDate.value.plusDays(1).atStartOfDay(ZoneId.systemDefault())
-                
+
                 // Get partner metrics from the couple health repository
                 coupleHealthRepository.getPartnerHealthMetrics(_selectedDate.value).collect { partnerMetrics ->
                     if (partnerMetrics.isNotEmpty()) {
@@ -539,7 +550,7 @@ class HealthViewModel @Inject constructor(
 
     fun loadMockData() {
         val mockMetrics = mutableListOf<HealthMetric>()
-        
+
         // Mock steps data
         mockMetrics.add(
             StepsMetric(
@@ -551,7 +562,7 @@ class HealthViewModel @Inject constructor(
                 isShared = false
             )
         )
-        
+
         // Mock heart rate data
         mockMetrics.add(
             HeartRateMetric(
@@ -563,7 +574,7 @@ class HealthViewModel @Inject constructor(
                 isShared = false
             )
         )
-        
+
         // Mock sleep data
         val sleepStart = _selectedDate.value.minusDays(1).atTime(23, 0).toInstant(ZoneOffset.UTC)
         val sleepEnd = _selectedDate.value.atTime(7, 30).toInstant(ZoneOffset.UTC)
@@ -579,7 +590,7 @@ class HealthViewModel @Inject constructor(
                 isShared = false
             )
         )
-        
+
         // Mock calories burned
         mockMetrics.add(
             CaloriesBurnedMetric(
@@ -591,7 +602,7 @@ class HealthViewModel @Inject constructor(
                 isShared = false
             )
         )
-        
+
         // Mock active minutes
         mockMetrics.add(
             ActiveMinutesMetric(
@@ -604,7 +615,7 @@ class HealthViewModel @Inject constructor(
                 isShared = false
             )
         )
-        
+
         _healthMetrics.value = mockMetrics
     }
 }

@@ -104,22 +104,34 @@ fun WaterTrackerCard(
             ) {
                 QuickAddButton(
                     amount = 100,
-                    onClick = { onAddWater(100) }
+                    onClick = { 
+                        println("DEBUG: WaterTrackerCard - Add 100ml button clicked")
+                        onAddWater(100) 
+                    }
                 )
                 
                 QuickAddButton(
                     amount = 200,
-                    onClick = { onAddWater(200) }
+                    onClick = { 
+                        println("DEBUG: WaterTrackerCard - Add 200ml button clicked")
+                        onAddWater(200) 
+                    }
                 )
                 
                 QuickAddButton(
                     amount = 300,
-                    onClick = { onAddWater(300) }
+                    onClick = { 
+                        println("DEBUG: WaterTrackerCard - Add 300ml button clicked")
+                        onAddWater(300) 
+                    }
                 )
                 
                 QuickAddButton(
                     amount = 500,
-                    onClick = { onAddWater(500) }
+                    onClick = { 
+                        println("DEBUG: WaterTrackerCard - Add 500ml button clicked")
+                        onAddWater(500) 
+                    }
                 )
             }
         }
