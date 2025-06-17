@@ -14,10 +14,26 @@
 - [x] Replace mock data fallbacks with empty data when Health Connect is unavailable
 
 ### 3. Meal Tracking System
-- [ ] Enhance MealEntryDialog with food search functionality
-- [ ] Add nutritional information database integration
-- [ ] Implement meal categories and tagging system
-- [ ] Add meal photos and visual representation
+- [ ] Enhance MealEntryDialog with modern UI and animations
+  - [ ] Redesign with Material 3 components and motion animations
+  - [ ] Add swipe gestures for quick actions
+  - [ ] Implement staggered reveal animations for food items
+- [ ] Create advanced food search functionality
+  - [ ] Implement real-time search with suggestions
+  - [ ] Add barcode scanning for packaged foods
+  - [ ] Include voice input for hands-free meal logging
+- [ ] Build comprehensive nutritional database integration
+  - [ ] Connect to external nutrition API (FoodData Central or Edamam)
+  - [ ] Implement local caching for offline access
+  - [ ] Add custom food creation with nutrition calculator
+- [ ] Design visual meal representation system
+  - [ ] Create food item cards with dynamic color based on food category
+  - [ ] Add meal photos with AI-assisted food recognition
+  - [ ] Implement portion size visualization with 3D models
+- [ ] Develop intelligent meal insights
+  - [ ] Add nutritional balance indicators
+  - [ ] Create meal pattern recognition
+  - [ ] Implement personalized meal suggestions
 
 ### 4. Water Tracking Refinement
 - [x] Fix water intake tracking to properly update UI and persist data

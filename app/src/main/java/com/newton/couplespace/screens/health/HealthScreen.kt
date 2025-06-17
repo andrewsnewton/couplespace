@@ -31,8 +31,9 @@ import com.newton.couplespace.screens.health.components.couple.PartnerHealthSumm
 import com.newton.couplespace.screens.health.components.couple.PartnerHighlightsCard
 import com.newton.couplespace.screens.health.components.couple.SharedGoalsCard
 import com.newton.couplespace.screens.health.components.healthconnect.HealthConnectPermissionCard
-import com.newton.couplespace.screens.health.components.nutrition.MealLoggerCard
-import com.newton.couplespace.screens.health.components.nutrition.MealEntryDialog
+import com.newton.couplespace.screens.health.components.nutrition.meal.integration.EnhancedMealLoggerCard
+import com.newton.couplespace.screens.health.components.nutrition.meal.integration.AddMealFab
+// MealEntryDialog is now handled by EnhancedMealLoggerCard
 import com.newton.couplespace.screens.health.components.common.HealthDatePickerDialog
 import com.newton.couplespace.screens.health.components.nutrition.WaterTrackerCard
 import com.newton.couplespace.screens.health.data.models.*
@@ -62,8 +63,7 @@ fun HealthScreen(
     val partnerHealthMetrics by healthViewModel.partnerHealthMetrics.collectAsState()
     val hasPartnerData by healthViewModel.hasPartnerData.collectAsState()
     
-    // Track whether to show the add meal dialog
-    var showAddMealDialog by remember { mutableStateOf(false) }
+    // Meal entry dialog is now handled by EnhancedMealLoggerCard
     
     // Track whether to show the date picker dialog
     var showDatePickerDialog by remember { mutableStateOf(false) }
@@ -207,15 +207,7 @@ fun HealthScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddMealDialog = true },
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Add Meal"
-                )
-            }
+            AddMealFab()
         },
         snackbarHost = { 
             SnackbarHost(hostState = snackbarHostState) { data ->
@@ -403,17 +395,10 @@ fun HealthScreen(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Meal logger
-                MealLoggerCard(
-                    meals = nutritionViewModel.meals.collectAsState().value,
-                    nutritionSummary = nutritionViewModel.nutritionSummary.collectAsState().value,
-                    onAddMeal = { showAddMealDialog = true },
-                    onEditMeal = { nutritionViewModel.editMeal(it) },
-                    onDeleteMeal = { nutritionViewModel.deleteMeal(it) },
-                    onShareMeal = { id, isShared -> 
-                        nutritionViewModel.updateMealSharedStatus(id, isShared) 
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                // Meal logger with enhanced dialog integration
+                EnhancedMealLoggerCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    nutritionViewModel = nutritionViewModel
                 )
                 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -442,16 +427,7 @@ fun HealthScreen(
             }
         }
         
-        // Add meal dialog
-        if (showAddMealDialog) {
-            MealEntryDialog(
-                onDismiss = { showAddMealDialog = false },
-                onSave = { meal -> 
-                    nutritionViewModel.saveMeal(meal)
-                    showAddMealDialog = false 
-                }
-            )
-        }
+        // Meal entry dialog is now handled by EnhancedMealLoggerCard
         
         // Date picker dialog
         if (showDatePickerDialog) {

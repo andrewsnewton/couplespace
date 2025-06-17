@@ -272,7 +272,7 @@ enum class ChallengeDurationType {
 /**
  * Represents a food item from the USDA FoodData Central API
  */
-data class FoodItem(
+data class HealthMetricFoodItem(
     val fdcId: String,
     val description: String,
     val brandName: String = "",
@@ -286,9 +286,11 @@ data class FoodItem(
 )
 
 /**
- * Represents a meal entry
+ * Represents a legacy meal entry (deprecated, use MealEntry instead)
+ * @deprecated Use MealEntry from com.newton.couplespace.screens.health.data.models.MealEntry instead
  */
-data class MealEntry(
+@Deprecated("Use MealEntry instead", ReplaceWith("MealEntry", "com.newton.couplespace.screens.health.data.models.MealEntry"))
+data class LegacyMealEntry(
     val id: String,
     val userId: String,
     val name: String,
@@ -297,7 +299,8 @@ data class MealEntry(
     val carbs: Float,
     val protein: Float,
     val fat: Float,
-    val foods: List<FoodItem> = emptyList(),
+    val foods: List<HealthMetricFoodItem> = emptyList(),
+    val category: String = "meal",
     val isShared: Boolean = false
 )
 

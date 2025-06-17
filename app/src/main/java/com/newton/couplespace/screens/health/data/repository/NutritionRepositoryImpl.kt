@@ -57,16 +57,13 @@ class NutritionRepositoryImpl @Inject constructor(
                 val response = result.getOrNull()
                 emit(response?.foods?.map { food ->
                     FoodItem(
-                        fdcId = food.fdcId,
-                        description = food.description,
-                        brandName = food.brandName ?: "",
-                        ingredients = food.ingredients ?: "",
-                        servingSize = food.servingSize?.toDouble() ?: 100.0,
-                        servingSizeUnit = food.servingSizeUnit ?: "g",
+                        name = food.description,
+                        servingSize = "${food.servingSize ?: 100.0}${food.servingSizeUnit ?: "g"}",
                         calories = food.foodNutrients.find { it.nutrientName == "Energy" }?.value?.toDouble()?.toInt() ?: 0,
                         protein = food.foodNutrients.find { it.nutrientName == "Protein" }?.value?.toDouble()?.toFloat() ?: 0f,
                         carbs = food.foodNutrients.find { it.nutrientName == "Carbohydrate, by difference" }?.value?.toDouble()?.toFloat() ?: 0f,
-                        fat = food.foodNutrients.find { it.nutrientName == "Total lipid (fat)" }?.value?.toDouble()?.toFloat() ?: 0f
+                        fat = food.foodNutrients.find { it.nutrientName == "Total lipid (fat)" }?.value?.toDouble()?.toFloat() ?: 0f,
+                        category = food.brandName ?: ""
                     )
                 } ?: emptyList())
             } else {
@@ -85,28 +82,22 @@ class NutritionRepositoryImpl @Inject constructor(
     private fun getMockFoodItems(query: String): List<FoodItem> {
         return listOf(
             FoodItem(
-                fdcId = "mock-1",
-                description = "$query (Mock)",
-                brandName = "Mock Brand",
-                ingredients = "Mock ingredients",
-                servingSize = 100.0,
-                servingSizeUnit = "g",
+                name = "$query (Mock)",
+                servingSize = "100g",
                 calories = 250,
                 protein = 10f,
                 carbs = 30f,
-                fat = 8f
+                fat = 8f,
+                category = "Mock Brand"
             ),
             FoodItem(
-                fdcId = "mock-2",
-                description = "$query Deluxe (Mock)",
-                brandName = "Premium Mock",
-                ingredients = "Premium mock ingredients",
-                servingSize = 100.0,
-                servingSizeUnit = "g",
-                calories = 350,
-                protein = 15f,
-                carbs = 40f,
-                fat = 12f
+                name = "$query Organic (Mock)",
+                servingSize = "100g",
+                calories = 180,
+                protein = 8f,
+                carbs = 20f,
+                fat = 5f,
+                category = "Organic Mock Brand"
             )
         )
     }
@@ -139,16 +130,13 @@ class NutritionRepositoryImpl @Inject constructor(
             }
 
             val foodItem = FoodItem(
-                fdcId = fdcId,
-                description = description,
-                brandName = response.brandName ?: "",
-                ingredients = response.ingredients ?: "",
-                servingSize = servingSize,
-                servingSizeUnit = servingSizeUnit,
+                name = description,
+                servingSize = "${servingSize}${servingSizeUnit}",
                 calories = calories,
                 protein = protein,
                 carbs = carbs,
-                fat = fat
+                fat = fat,
+                category = response.brandName ?: ""
             )
 
             Result.success(foodItem)

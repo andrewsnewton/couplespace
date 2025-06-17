@@ -1,8 +1,7 @@
-package com.newton.couplespace.screens.health.components.nutrition
+package com.newton.couplespace.screens.health.components.nutrition.meal.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.newton.couplespace.screens.health.components.nutrition.meal.ui.clickable
 import com.newton.couplespace.screens.health.data.models.DailyNutritionSummary
 import com.newton.couplespace.screens.health.data.models.MealEntry
 import java.time.ZoneId
@@ -26,15 +26,14 @@ import java.time.format.DateTimeFormatter
 
 /**
  * A card for logging and tracking meals and nutrition
+ * This is a new implementation that replaces the old MealLoggerCard
  */
 @Composable
-fun MealLoggerCard(
+fun MealLoggerCardNew(
     meals: List<MealEntry>,
     nutritionSummary: DailyNutritionSummary?,
-    onAddMeal: () -> Unit,
-    onEditMeal: (String) -> Unit,
-    onDeleteMeal: (String) -> Unit,
-    onShareMeal: (String, Boolean) -> Unit,
+    onAddMealClick: () -> Unit,
+    onMealClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -61,7 +60,7 @@ fun MealLoggerCard(
                     fontWeight = FontWeight.Bold
                 )
                 
-                IconButton(onClick = onAddMeal) {
+                IconButton(onClick = onAddMealClick) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Meal",
@@ -110,42 +109,16 @@ fun MealLoggerCard(
                 Column(
                     modifier = Modifier.heightIn(max = 300.dp)
                 ) {
-                    meals.sortedBy { it.timestamp }.forEach { meal ->
+                    meals.forEach { meal ->
                         MealItem(
                             meal = meal,
-                            onEdit = { onEditMeal(meal.id) },
-                            onDelete = { onDeleteMeal(meal.id) },
-                            onToggleShare = { onShareMeal(meal.id, !meal.isShared) }
-                        )
-                        
-                        Divider(
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            onClick = { onMealClick(meal.id) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
                         )
                     }
                 }
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Add meal button
-            Button(
-                onClick = onAddMeal,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                Text("Add Meal")
             }
         }
     }
@@ -155,70 +128,43 @@ fun MealLoggerCard(
  * A component displaying a nutrition summary
  */
 @Composable
-fun NutritionSummary(
+private fun NutritionSummary(
     summary: DailyNutritionSummary,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
         // Calories
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Calories",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            
-            // Assuming a default calorie goal of 2000 if not specified
-            val calorieGoal = 2000
-            Text(
-                text = "${summary.totalCalories} / $calorieGoal kcal",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(4.dp))
-        
-        // Calories progress bar
-        LinearProgressIndicator(
-            progress = summary.totalCalories.toFloat() / 2000f, // Using default goal of 2000
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+        Text(
+            text = "Calories: ${summary.totalCalories} kcal",
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         
         // Macronutrients
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             MacroNutrient(
                 name = "Carbs",
                 amount = summary.totalCarbs.toFloat(),
-                color = Color(0xFF4CAF50),
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f)
             )
             
             MacroNutrient(
                 name = "Protein",
                 amount = summary.totalProtein.toFloat(),
-                color = Color(0xFF2196F3),
+                color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.weight(1f)
             )
             
             MacroNutrient(
                 name = "Fat",
                 amount = summary.totalFat.toFloat(),
-                color = Color(0xFFFF9800),
+                color = MaterialTheme.colorScheme.tertiary,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -229,29 +175,27 @@ fun NutritionSummary(
  * A component displaying a macronutrient value
  */
 @Composable
-fun MacroNutrient(
+private fun MacroNutrient(
     name: String,
     amount: Float,
     color: Color,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .background(color, CircleShape)
         )
         
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.width(4.dp))
         
         Text(
-            text = "${String.format("%.1f", amount)}g",
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
-            color = color
+            text = "$name: ${String.format("%.1f", amount)}g",
+            style = MaterialTheme.typography.bodyMedium
         )
     }
 }
@@ -260,32 +204,29 @@ fun MacroNutrient(
  * A component displaying a meal item
  */
 @Composable
-fun MealItem(
+private fun MealItem(
     meal: MealEntry,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onToggleShare: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showOptions by remember { mutableStateOf(false) }
-    
-    val time = meal.timestamp
-        .atZone(ZoneId.systemDefault())
-        .toLocalTime()
-        .format(DateTimeFormatter.ofPattern("h:mm a"))
+    val formatter = remember { DateTimeFormatter.ofPattern("h:mm a") }
+    val time = remember(meal) { 
+        meal.getDateTime().format(formatter) 
+    }
     
     Row(
         modifier = modifier
-            .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Meal icon
+        // Meal icon with colored background
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -324,8 +265,9 @@ fun MealItem(
             }
             
             // Calories and macros
+            val nutrition = meal.calculateTotalNutrition()
             Text(
-                text = "${meal.calories} kcal • ${String.format("%.1f", meal.carbs)}g carbs • ${String.format("%.1f", meal.protein)}g protein • ${String.format("%.1f", meal.fat)}g fat",
+                text = "${nutrition.calories} kcal • ${String.format("%.1f", nutrition.carbs)}g carbs • ${String.format("%.1f", nutrition.protein)}g protein • ${String.format("%.1f", nutrition.fat)}g fat",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -333,68 +275,12 @@ fun MealItem(
             )
         }
         
-        Spacer(modifier = Modifier.width(8.dp))
-        
-        // Action buttons
-        Row {
-            // Share indicator/button
-            IconButton(
-                onClick = onToggleShare,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = if (meal.isShared) Icons.Default.Share else Icons.Default.Share,
-                    contentDescription = if (meal.isShared) "Unshare Meal" else "Share Meal",
-                    tint = if (meal.isShared) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
-            
-            // More options
-            Box {
-                IconButton(
-                    onClick = { showOptions = !showOptions },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More Options",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                
-                DropdownMenu(
-                    expanded = showOptions,
-                    onDismissRequest = { showOptions = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Edit") },
-                        onClick = {
-                            onEdit()
-                            showOptions = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = null
-                            )
-                        }
-                    )
-                    
-                    DropdownMenuItem(
-                        text = { Text("Delete") },
-                        onClick = {
-                            onDelete()
-                            showOptions = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = null
-                            )
-                        }
-                    )
-                }
-            }
-        }
+        // Edit indicator
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = "Edit Meal",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.padding(start = 8.dp)
+        )
     }
 }
