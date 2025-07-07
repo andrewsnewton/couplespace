@@ -17,9 +17,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.newton.couplespace.models.TimelineEvent
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -31,7 +34,10 @@ fun TimelineEventCard(
     event: TimelineEvent,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isUserEvent: Boolean = true
+    isUserEvent: Boolean = true,
+    displayDate: LocalDate? = null,
+    sourceTimezone: ZoneId? = null,
+    displayTimezone: ZoneId? = null
 ) {
     // Event type-based styling
     val eventInfo = getEventTypeInfo(event.eventType?.name ?: "")
@@ -94,6 +100,38 @@ fun TimelineEventCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                
+                // Show timezone indicator if event crosses date boundaries
+                if (displayDate != null && sourceTimezone != null && displayTimezone != null) {
+                    val eventDate = event.startTime.toDate().toInstant().atZone(sourceTimezone).toLocalDate()
+                    val showsOnDifferentDate = eventDate != displayDate
+                    
+                    if (showsOnDifferentDate) {
+                        val eventDateFormatted = eventDate.format(DateTimeFormatter.ofPattern("MMM d"))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Start,
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            // Timezone icon
+                            Icon(
+                                imageVector = Icons.Outlined.AccessTime,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            // Date text
+                            Text(
+                                text = "From $eventDateFormatted",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
                 
                 // Format time range using the event's source timezone
                 val sourceTimezoneId = when {

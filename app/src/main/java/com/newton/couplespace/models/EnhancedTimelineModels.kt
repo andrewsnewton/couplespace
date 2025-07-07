@@ -226,7 +226,9 @@ data class TimelineViewState(
     val isPaired: Boolean = false,
     val partnerTimeZone: TimeZone? = null,
     val userProfilePicture: String? = null,
-    val partnerProfilePicture: String? = null
+    val partnerProfilePicture: String? = null,
+    val hasNotificationPermission: Boolean = false,
+    val hasExactAlarmPermission: Boolean = false
 )
 
 /**

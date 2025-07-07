@@ -1,7 +1,13 @@
 package com.newton.couplespace.screens.main.timeline
 
+import android.app.AlarmManager
 import android.app.Application
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.Timestamp
@@ -9,6 +15,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.newton.couplespace.auth.AuthService
 import com.newton.couplespace.models.*
+import com.newton.couplespace.services.EventNotificationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +42,9 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
     
     // Auth Service for partner data
     private val authService: AuthService
+    
+    // Notification manager for event notifications
+    private val notificationManager: EventNotificationManager
     
     // Firestore reference
     private val firestore = FirebaseFirestore.getInstance()
@@ -63,6 +73,8 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
             repository = EnhancedTimelineRepository(appContext)
             // Initialize auth service with application context
             authService = AuthService(appContext)
+            // Initialize notification manager
+            notificationManager = EventNotificationManager(appContext)
             Log.d(TAG, "TimelineViewModel initialized successfully")
             
             // Load user timezone first
@@ -71,6 +83,9 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
             loadPartnerData()
             // Then load the events
             loadEventsForCurrentView()
+            
+            // Schedule notifications for today's events
+            scheduleNotificationsForToday()
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing TimelineViewModel", e)
             throw e
@@ -478,6 +493,11 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
             result.fold(
                 onSuccess = { eventId ->
                     Log.d(TAG, "Event created with ID: $eventId")
+                    
+                    // Schedule notification for the event
+                    // All events in the user's calendar should have notifications
+                    notificationManager.onEventCreated(utcEvent)
+                    
                     loadEventsForCurrentView()
                 },
                 onFailure = { error ->
@@ -594,6 +614,10 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
                             _selectedEvent.value = utcEvent
                             _viewState.update { it.copy(selectedEvent = utcEvent) }
                         }
+                        
+                        // Update notification for the event
+                        // All events in the user's calendar should have notifications
+                        notificationManager.onEventUpdated(utcEvent)
                     },
                     onFailure = { error ->
                         _viewState.update {
@@ -626,17 +650,64 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
             try {
                 _viewState.update { it.copy(isLoading = true, error = null) }
                 
+                val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                if (currentUserId.isBlank()) {
+                    _viewState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "You must be logged in to delete an event"
+                        )
+                    }
+                    return@launch
+                }
+                
+                // Get the event to check permissions
+                val event = _viewState.value.events.find { it.id == eventId }
+                    ?: _viewState.value.partnerEvents?.find { it.id == eventId }
+                
+                if (event == null) {
+                    _viewState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "Event not found"
+                        )
+                    }
+                    return@launch
+                }
+                
+                // Check if the user has permission to delete this event
+                val isUserEvent = event.userId == currentUserId
+                val isPartnerEvent = event.userId != currentUserId && 
+                                    event.coupleId.isNotEmpty() && 
+                                    event.createdBy == currentUserId
+                
+                if (!isUserEvent && !isPartnerEvent) {
+                    _viewState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "You don't have permission to delete this event"
+                        )
+                    }
+                    return@launch
+                }
+                
+                // Delete the event from the repository
                 val result = repository.deleteTimelineEvent(eventId)
                 
                 result.fold(
-                    onSuccess = {
-                        Log.d(TAG, "Event deleted: $eventId")
-                        loadEventsForCurrentView()
-                        
-                        // If this is the selected event, clear it
+                    onSuccess = { _ ->
+                        // Clear selected event if it was the deleted one
                         if (_selectedEvent.value?.id == eventId) {
-                            clearSelectedEvent()
+                            _selectedEvent.value = null
                         }
+                        
+                        // Cancel notifications for the deleted event
+                        // We cancel notifications for any event that was in the user's calendar
+                        notificationManager.onEventDeleted(eventId)
+                        
+                        // Refresh events
+                        loadEventsForCurrentView()
+                        _viewState.update { it.copy(isLoading = false) }
                     },
                     onFailure = { error ->
                         _viewState.update { 
@@ -795,6 +866,87 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
         )
         
         createEvent(event)
+    }
+    
+    /**
+     * Check if notification permissions are granted
+     */
+    fun checkNotificationPermissions() {
+        viewModelScope.launch {
+            Log.d(TAG, "Checking notification and exact alarm permissions")
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val context = getApplication<Application>().applicationContext
+                val notificationPermission = ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                )
+                
+                val hasPermission = notificationPermission == PackageManager.PERMISSION_GRANTED
+                Log.d(TAG, "POST_NOTIFICATIONS permission: $hasPermission (Android ${Build.VERSION.SDK_INT})")
+                
+                _viewState.update { 
+                    it.copy(hasNotificationPermission = hasPermission) 
+                }
+            } else {
+                // For Android 12 and below, notification permission is granted by default
+                Log.d(TAG, "POST_NOTIFICATIONS permission: true (default for Android ${Build.VERSION.SDK_INT})")
+                _viewState.update { it.copy(hasNotificationPermission = true) }
+            }
+            
+            // Check for exact alarm permission
+            val alarmManager = getApplication<Application>().getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val canScheduleExactAlarms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val result = alarmManager.canScheduleExactAlarms()
+                Log.d(TAG, "SCHEDULE_EXACT_ALARM permission: $result (Android ${Build.VERSION.SDK_INT})")
+                result
+            } else {
+                Log.d(TAG, "SCHEDULE_EXACT_ALARM permission: true (default for Android ${Build.VERSION.SDK_INT})")
+                true // For Android 11 and below, exact alarms are allowed by default
+            }
+            
+            _viewState.update { 
+                it.copy(hasExactAlarmPermission = canScheduleExactAlarms) 
+            }
+            
+            // Log the updated state
+            Log.d(TAG, "Updated permission state - Notification: ${_viewState.value.hasNotificationPermission}, Exact Alarm: ${_viewState.value.hasExactAlarmPermission}")
+        }
+    }
+    
+    /**
+     * Create an intent to open the exact alarm permission settings
+     * This should be called when the user needs to grant the SCHEDULE_EXACT_ALARM permission
+     */
+    fun getExactAlarmPermissionSettingsIntent(): Intent? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Log.d(TAG, "Creating intent to open exact alarm permission settings")
+            val packageName = getApplication<Application>().packageName
+            Intent().apply {
+                action = android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM
+                data = android.net.Uri.fromParts("package", packageName, null)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        } else {
+            // Not needed for Android 11 and below
+            Log.d(TAG, "Exact alarm permission settings not needed for this Android version")
+            null
+        }
+    }
+    
+    /**
+     * Schedule notifications for today's events
+     */
+    private fun scheduleNotificationsForToday() {
+        // Check permissions first
+        checkNotificationPermissions()
+        
+        // Only schedule if we have the necessary permissions
+        if (_viewState.value.hasNotificationPermission && _viewState.value.hasExactAlarmPermission) {
+            notificationManager.scheduleTodaysEventNotifications()
+        } else {
+            Log.d(TAG, "Cannot schedule notifications: missing permissions")
+        }
     }
     
     /**

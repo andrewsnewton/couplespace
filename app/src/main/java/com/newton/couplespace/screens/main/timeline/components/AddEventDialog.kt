@@ -162,13 +162,16 @@ fun AddEventDialog(
                                     
                                     // Use different timezone handling based on whether it's for partner or not
                                     val (startTimestamp, endTimestamp, sourceTimezone) = if (isForPartner && partnerZoneId != null) {
-                                        // For partner events, convert to partner timezone
-                                        val partnerStartDateTime = startDateTime.atZone(ZoneId.systemDefault())
-                                            .withZoneSameInstant(partnerZoneId)
-                                        val partnerEndDateTime = endDateTime.atZone(ZoneId.systemDefault())
-                                            .withZoneSameInstant(partnerZoneId)
+                                        // For partner events, treat the selected time as already being in the partner's timezone
+                                        // This is the key fix: we're NOT converting the time, just treating it as if it were already
+                                        // in the partner's timezone
+                                        
+                                        // Create ZonedDateTime directly in partner's timezone (not converting from user timezone)
+                                        val partnerStartDateTime = startDateTime.atZone(partnerZoneId)
+                                        val partnerEndDateTime = endDateTime.atZone(partnerZoneId)
                                             
-                                        Log.d("AddEventDialog", "Converting to partner timezone: $partnerStartDateTime to $partnerEndDateTime")
+                                        Log.d("AddEventDialog", "Using time directly in partner timezone: $partnerStartDateTime to $partnerEndDateTime")
+                                        Log.d("AddEventDialog", "Partner timezone: ${partnerZoneId.id}")
                                         
                                         Triple(
                                             Timestamp(Date.from(partnerStartDateTime.toInstant())),

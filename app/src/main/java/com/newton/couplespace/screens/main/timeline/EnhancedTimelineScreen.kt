@@ -1,7 +1,16 @@
 package com.newton.couplespace.screens.main.timeline
 
+import android.Manifest
+import android.app.AlarmManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,8 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CoroutineScope
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.newton.couplespace.models.TimelineEvent
@@ -50,6 +64,44 @@ fun EnhancedTimelineScreen(
             }
         }
     )
+    
+    // State for showing permission dialogs
+    var showNotificationPermissionDialog by remember { mutableStateOf(false) }
+    var showExactAlarmPermissionDialog by remember { mutableStateOf(false) }
+    
+    // Check notification permissions when the screen is first displayed
+    LaunchedEffect(Unit) {
+        viewModel.checkNotificationPermissions()
+        // Force check after a short delay to ensure UI state is updated
+        kotlinx.coroutines.delay(500)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !viewModel.viewState.value.hasNotificationPermission) {
+            showNotificationPermissionDialog = true
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !viewModel.viewState.value.hasExactAlarmPermission) {
+            showExactAlarmPermissionDialog = true
+        }
+    }
+    
+    // Permission request launcher for notification permission
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            Log.d(TAG, "Notification permission granted")
+            viewModel.checkNotificationPermissions()
+        } else {
+            Log.d(TAG, "Notification permission denied")
+        }
+    }
+    
+    val viewState by viewModel.viewState.collectAsState()
+    // Check if permissions are needed    
+    LaunchedEffect(viewState.hasNotificationPermission, viewState.hasExactAlarmPermission) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !viewState.hasNotificationPermission) {
+            showNotificationPermissionDialog = true
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !viewState.hasExactAlarmPermission) {
+            showExactAlarmPermissionDialog = true
+        }
+    }
     LaunchedEffect(Unit) {
         try {
             // Initial load
@@ -58,8 +110,69 @@ fun EnhancedTimelineScreen(
             Log.e(TAG, "Error in LaunchedEffect", e)
         }
     }
-    val viewState by viewModel.viewState.collectAsState()
+    
     val selectedEvent by viewModel.selectedEvent.collectAsState()
+    
+    // Show notification permission dialog if needed
+    if (showNotificationPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotificationPermissionDialog = false },
+            title = { Text("Notification Permission Required") },
+            text = { 
+                Text("To receive event reminders, please grant notification permission.") 
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showNotificationPermissionDialog = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
+                ) {
+                    Text("Grant Permission")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNotificationPermissionDialog = false }) {
+                    Text("Not Now")
+                }
+            }
+        )
+    }
+    
+    // Show exact alarm permission dialog if needed
+    if (showExactAlarmPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showExactAlarmPermissionDialog = false },
+            title = { Text("Exact Alarm Permission Required") },
+            text = { 
+                Column {
+                    Text("To ensure event reminders are delivered at the correct time, this app needs permission to schedule exact alarms.")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Please tap 'Open Settings' and enable the permission for this app.")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExactAlarmPermissionDialog = false
+                        // Open system settings for exact alarm permission
+                        viewModel.getExactAlarmPermissionSettingsIntent()?.let { intent ->
+                            context.startActivity(intent)
+                        }
+                    }
+                ) {
+                    Text("Open Settings")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExactAlarmPermissionDialog = false }) {
+                    Text("Not Now")
+                }
+            }
+        )
+    }
     
     // Collect user and partner timezone states from ViewModel
     val userTimezone by viewModel.userTimezone.collectAsState()
@@ -170,6 +283,33 @@ fun EnhancedTimelineScreen(
                                 MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    
+                    // Permission check button
+                    val scope = rememberCoroutineScope()
+                    IconButton(
+                        onClick = {
+                            // Force check permissions and show dialogs if needed
+                            viewModel.checkNotificationPermissions()
+                            // Check after a short delay to ensure state is updated
+                            scope.launch {
+                                kotlinx.coroutines.delay(300)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !viewModel.viewState.value.hasExactAlarmPermission) {
+                                    showExactAlarmPermissionDialog = true
+                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !viewModel.viewState.value.hasNotificationPermission) {
+                                    showNotificationPermissionDialog = true
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Notifications,
+                            contentDescription = "Check Notification Permissions",
+                            tint = if (!viewState.hasExactAlarmPermission || !viewState.hasNotificationPermission)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.primary
+                        )
+                    }
                     IconButton(onClick = { viewModel.setViewMode(TimelineViewMode.AGENDA) }) {
                         Icon(
                             Icons.Default.ViewAgenda,
@@ -212,6 +352,77 @@ fun EnhancedTimelineScreen(
                     TimelineViewMode.WEEK -> {
                         // Combine user and partner events for week view
                         val allEvents = viewState.events + (viewState.partnerEvents ?: emptyList())
+                        
+                        // Notification Permission Dialog
+                        if (showNotificationPermissionDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showNotificationPermissionDialog = false },
+                                title = { Text("Notification Permission Required") },
+                                text = { 
+                                    Text(
+                                        "To receive event reminders, please allow notifications for this app. " +
+                                        "Without this permission, you won't be notified about upcoming events.",
+                                        textAlign = TextAlign.Center
+                                    ) 
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            showNotificationPermissionDialog = false
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            }
+                                        }
+                                    ) {
+                                        Text("Grant Permission")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(
+                                        onClick = { showNotificationPermissionDialog = false }
+                                    ) {
+                                        Text("Not Now")
+                                    }
+                                }
+                            )
+                        }
+                        
+                        // Exact Alarm Permission Dialog
+                        if (showExactAlarmPermissionDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showExactAlarmPermissionDialog = false },
+                                title = { Text("Exact Alarm Permission Required") },
+                                text = { 
+                                    Text(
+                                        "To ensure event reminders are delivered at the exact time, please allow this app to schedule exact alarms. " +
+                                        "Without this permission, notifications may be delayed.",
+                                        textAlign = TextAlign.Center
+                                    ) 
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            showExactAlarmPermissionDialog = false
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                                    data = Uri.parse("package:${context.packageName}")
+                                                }
+                                                context.startActivity(intent)
+                                            }
+                                        }
+                                    ) {
+                                        Text("Open Settings")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(
+                                        onClick = { showExactAlarmPermissionDialog = false }
+                                    ) {
+                                        Text("Not Now")
+                                    }
+                                }
+                            )
+                        }
                         
                         WeekTimelineView(
                             startDate = viewState.selectedDate,

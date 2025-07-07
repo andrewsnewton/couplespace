@@ -247,49 +247,94 @@ private fun isEventOverlappingHour(
 
     Log.d("SplitTimelineView", "Event ${event.title} hour overlap check: sourceTimezone=$sourceTimezoneId, displayTimezone=${timezone.id}, hour=$hour")
 
-    return try {
-        // Get the event's UTC instants
-        val eventStartInstant = event.startTime.toDate().toInstant()
-        val eventEndInstant = event.endTime?.toDate()?.toInstant() ?: eventStartInstant.plusSeconds(3600)
-
-        // Convert event UTC time to display timezone
-        val eventStartInDisplayTz = eventStartInstant.atZone(displayZoneId).toLocalDateTime()
-        val eventEndInDisplayTz = eventEndInstant.atZone(displayZoneId).toLocalDateTime()
-
-        // Create the hour slot boundaries in the display timezone
-        val slotStartDateTime = LocalDateTime.of(date, LocalTime.of(hour, 0))
-        val slotEndDateTime = LocalDateTime.of(date, LocalTime.of(hour, 59, 59))
-
-        // Get start and end dates of event in display timezone
-        val eventStartDate = eventStartInDisplayTz.toLocalDate()
-        val eventEndDate = eventEndInDisplayTz.toLocalDate()
-
-        // Check if the selected date is within the event date range (inclusive)
-        val dateMatches = !date.isBefore(eventStartDate) && !date.isAfter(eventEndDate)
-
-        if (!dateMatches) {
-            Log.d("SplitTimelineView", "Event ${event.title} doesn't match date range: eventStartDate=$eventStartDate, eventEndDate=$eventEndDate, selectedDate=$date")
-            return false
-        }
-
-        // Check if the event overlaps with this hour slot in display timezone
-        val overlaps = (eventStartInDisplayTz.isBefore(slotEndDateTime) || eventStartInDisplayTz.isEqual(slotEndDateTime)) &&
-                       (eventEndInDisplayTz.isAfter(slotStartDateTime) || eventEndInDisplayTz.isEqual(slotStartDateTime))
-
-        if (overlaps) {
-            Log.d("SplitTimelineView", "Event ${event.title} overlaps with hour $hour")
-        } else {
-            Log.d("SplitTimelineView", "Event ${event.title} does NOT overlap with hour $hour")
-        }
-
-        overlaps
-    } catch (e: Exception) {
-        Log.e("SplitTimelineView", "Error in isEventOverlappingHour: ${e.message}", e)
-        false
-    }
+    return isEventOverlappingHour(
+        event = event,
+        date = date,
+        hour = hour,
+        sourceTimezoneId = eventZoneId,
+        displayZoneId = displayZoneId
+    )
 }
 
+/**
+ * Check if the event overlaps with a given hour slot on the selected date,
+ * considering timezone conversions and event start/end times.
+ */
+private fun isEventOverlappingHour(
+    event: TimelineEvent,
+    date: LocalDate,
+    hour: Int,
+    sourceTimezoneId: ZoneId,
+    displayZoneId: ZoneId
+): Boolean {
+    Log.d("SplitTimelineView", "Event ${event.title} hour overlap check: sourceTimezone=$sourceTimezoneId, displayTimezone=$displayZoneId, hour=$hour")
 
+    // Get event start and end as Instants (timezone-independent)
+    val eventStartInstant = event.startTime.toDate().toInstant()
+    val eventEndInstant = event.endTime?.toDate()?.toInstant() ?: eventStartInstant.plusSeconds(3600)
+
+    // First, check if the event should appear on this date using the same logic as TimelineUtils.shouldEventAppearOnDate
+    val selectedDateInEventTz = date.atStartOfDay(displayZoneId)
+        .withZoneSameInstant(sourceTimezoneId).toLocalDate()
+
+    val eventStartDateInSourceTz = event.startTime.toDate().toInstant().atZone(sourceTimezoneId).toLocalDate()
+    val eventEndDateInSourceTz = event.endTime?.toDate()?.toInstant()?.atZone(sourceTimezoneId)?.toLocalDate() ?: eventStartDateInSourceTz
+
+    // Check if the event should appear on this date based on timezone conversion
+    val nextDayInEventTz = selectedDateInEventTz.plusDays(1)
+    val prevDayInEventTz = selectedDateInEventTz.minusDays(1)
+    val twoDaysAheadInEventTz = selectedDateInEventTz.plusDays(2)
+    val twoDaysBehindInEventTz = selectedDateInEventTz.minusDays(2)
+
+    val tzAwareDateMatches = eventStartDateInSourceTz == selectedDateInEventTz ||
+        eventEndDateInSourceTz == selectedDateInEventTz ||
+        (eventStartDateInSourceTz.isBefore(selectedDateInEventTz) && eventEndDateInSourceTz.isAfter(selectedDateInEventTz)) ||
+        eventStartDateInSourceTz == nextDayInEventTz ||
+        eventStartDateInSourceTz == prevDayInEventTz ||
+        eventStartDateInSourceTz == twoDaysAheadInEventTz ||
+        eventStartDateInSourceTz == twoDaysBehindInEventTz
+
+    if (!tzAwareDateMatches) {
+        Log.d("SplitTimelineView", "Event ${event.title} does not match date after timezone conversion")
+        return false
+    }
+
+    // Now create hour slots for all possible dates the event might appear on
+    val possibleDates = listOf(
+        date, // The selected date
+        date.plusDays(1), // Next day
+        date.minusDays(1) // Previous day
+    )
+
+    // Check if the event overlaps with the given hour on any of the possible dates
+    for (slotDate in possibleDates) {
+        // Create the hour slot boundaries for this date
+        val slotStartDateTime = LocalDateTime.of(slotDate, LocalTime.of(hour, 0))
+        val slotEndDateTime = LocalDateTime.of(slotDate, LocalTime.of(hour, 59, 59))
+
+        // Convert slot times to Instant for accurate timezone-aware comparison
+        val slotStartInstant = slotStartDateTime.atZone(displayZoneId).toInstant()
+        val slotEndInstant = slotEndDateTime.atZone(displayZoneId).toInstant()
+
+        // Check if the event overlaps with this hour slot using timezone-aware Instants
+        val overlaps = (eventStartInstant.isBefore(slotEndInstant) || eventStartInstant.equals(slotEndInstant)) &&
+            (eventEndInstant.isAfter(slotStartInstant) || eventEndInstant.equals(slotStartInstant))
+
+        // Add detailed logging for debugging
+        Log.d("SplitTimelineView", "Event ${event.title} overlap check for date $slotDate, hour $hour:")
+        Log.d("SplitTimelineView", "  Event start: ${eventStartInstant}, Event end: ${eventEndInstant}")
+        Log.d("SplitTimelineView", "  Slot start: ${slotStartInstant}, Slot end: ${slotEndInstant}")
+        Log.d("SplitTimelineView", "  Overlap result: $overlaps")
+
+        if (overlaps) {
+            Log.d("SplitTimelineView", "Event ${event.title} OVERLAPS with hour $hour on date $slotDate")
+            return true
+        }
+    }
+    
+    Log.d("SplitTimelineView", "Event ${event.title} does NOT overlap with hour $hour on any relevant date")
+    return false
+}
 
 
 /**
@@ -407,7 +452,14 @@ private fun TimeSlot(
                             event = event,
                             onClick = { onEventClick(event.id) },
                             isUserEvent = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            displayDate = date,
+                            sourceTimezone = ZoneId.of(when {
+                                event.sourceTimezone.isNotEmpty() -> event.sourceTimezone
+                                event.metadata["sourceTimezone"] is String -> event.metadata["sourceTimezone"] as String
+                                else -> userTimeZone.id
+                            }),
+                            displayTimezone = ZoneId.of(userTimeZone.id)
                         )
                     }
                 }
@@ -527,7 +579,14 @@ private fun TimeSlot(
                                 event = event,
                                 onClick = { onEventClick(event.id) },
                                 isUserEvent = false,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                displayDate = date,
+                                sourceTimezone = ZoneId.of(when {
+                                    event.sourceTimezone.isNotEmpty() -> event.sourceTimezone
+                                    event.metadata["sourceTimezone"] is String -> event.metadata["sourceTimezone"] as String
+                                    else -> (partnerTimeZone ?: userTimeZone).id
+                                }),
+                                displayTimezone = ZoneId.of((partnerTimeZone ?: userTimeZone).id)
                             )
                         }
                     }
