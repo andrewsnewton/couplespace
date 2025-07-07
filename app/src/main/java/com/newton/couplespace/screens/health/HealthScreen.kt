@@ -207,7 +207,10 @@ fun HealthScreen(
             )
         },
         floatingActionButton = {
-            AddMealFab()
+            AddMealFab(onAddMealClick = { 
+                // Start new meal creation process
+                nutritionViewModel.startNewMeal() 
+            })
         },
         snackbarHost = { 
             SnackbarHost(hostState = snackbarHostState) { data ->

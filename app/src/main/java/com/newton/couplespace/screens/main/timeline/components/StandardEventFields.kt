@@ -183,13 +183,13 @@ fun StandardEventFields(
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "Sharing This Event",
+                    text = "Add to Partner's Calendar",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Text(
-                    text = "You can add this event to your partner's calendar by toggling 'Add to Partner's Calendar' below. This will make the event visible to both of you.",
+                    text = "You can add this event to your partner's calendar by toggling 'Add to Partner's Calendar' below.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )

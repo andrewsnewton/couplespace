@@ -13,6 +13,8 @@ data class User(
     val weight: Double = 0.0, // in kg
     val coupleCode: String = "",
     val partnerId: String = "",
+    val timezone: String = "", // Added timezone field
+    val profilePicture: String = "", // Added profile picture URL field
     val createdAt: Date = Date(),
     val updatedAt: Date = Date(),
     val isProfileComplete: Boolean = false // Added profile completion flag

@@ -58,6 +58,11 @@ interface NutritionRepository {
     suspend fun deleteMeal(mealId: String)
     
     /**
+     * Get a meal by its ID
+     */
+    suspend fun getMealById(mealId: String): MealEntry
+    
+    /**
      * Get water intake for a specific date
      */
     suspend fun getWaterIntakeForDate(date: LocalDate): Flow<List<WaterIntakeMetric>>

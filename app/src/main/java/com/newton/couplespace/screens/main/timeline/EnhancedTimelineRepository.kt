@@ -238,6 +238,7 @@ class EnhancedTimelineRepository(private val context: Context) {
             if (includePartnerEvents) {
                 val partnerId = getPartnerIdSuspend(currentUserId)
                 if (!partnerId.isNullOrBlank()) {
+                    // Get events created by the partner
                     val partnerEvents = eventsCollection
                         .whereEqualTo("userId", partnerId)
                         .whereGreaterThanOrEqualTo("startTime", startTimestamp)
@@ -247,7 +248,25 @@ class EnhancedTimelineRepository(private val context: Context) {
                         .await()
                         .toObjects(TimelineEvent::class.java)
                     
+                    // Also get events created by the current user but marked for the partner
+                    // We can't query directly on metadata fields, so we'll filter after fetching
+                    val userCreatedPartnerEvents = eventsCollection
+                        .whereEqualTo("createdBy", currentUserId)
+                        .whereGreaterThanOrEqualTo("startTime", startTimestamp)
+                        .whereLessThan("startTime", endTimestamp)
+                        .orderBy("startTime", Query.Direction.ASCENDING)
+                        .get()
+                        .await()
+                        .toObjects(TimelineEvent::class.java)
+                        .filter { event ->
+                            // Keep only events marked as partner events
+                            event.metadata["isForPartner"] as? Boolean == true
+                        }
+                    
+                    Log.d(TAG, "Partner events: ${partnerEvents.size}, User-created partner events: ${userCreatedPartnerEvents.size}")
+                    
                     events.addAll(partnerEvents)
+                    events.addAll(userCreatedPartnerEvents)
                     events.sortBy { it.startTime.seconds }
                 }
             }

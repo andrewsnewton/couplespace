@@ -76,6 +76,10 @@ class NutritionViewModel @Inject constructor(
     private val _waterReminderEnabled = MutableStateFlow(false)
     val waterReminderEnabled: StateFlow<Boolean> = _waterReminderEnabled.asStateFlow()
     
+    // Error state
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+    
     init {
         loadNutritionData()
         loadWaterGoal()
@@ -180,15 +184,21 @@ class NutritionViewModel @Inject constructor(
      */
     fun startNewMeal() {
         _currentMeal.value = MealEntry(
-            id = "",
-            userId = "currentUserId", // This would be retrieved from auth
+            id = UUID.randomUUID().toString(),
+            userId = auth.currentUser?.uid ?: "currentUserId",
             name = "",
+            category = "breakfast",
             timestamp = Instant.now(),
             calories = 0,
             carbs = 0f,
             protein = 0f,
             fat = 0f,
-            foods = emptyList()
+            foods = emptyList(),
+            notes = "",
+            imageUri = null,
+            isShared = false,
+            isFavorite = false,
+            tags = emptyList()
         )
     }
     
@@ -197,8 +207,16 @@ class NutritionViewModel @Inject constructor(
      */
     fun editMeal(mealId: String) {
         viewModelScope.launch {
-            val meal = _meals.value.find { it.id == mealId }
-            _currentMeal.value = meal
+            _isLoading.value = true
+            try {
+                val meal = nutritionRepository.getMealById(mealId)
+                _currentMeal.value = meal
+            } catch (e: Exception) {
+                // Handle error - meal not found
+                println("Error fetching meal: ${e.message}")
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
     
@@ -220,7 +238,7 @@ class NutritionViewModel @Inject constructor(
     }
     
     /**
-     * Saves the current meal
+     * Saves the current meal with just a name update
      */
     fun saveMeal(name: String) {
         val meal = _currentMeal.value ?: return
@@ -239,24 +257,30 @@ class NutritionViewModel @Inject constructor(
             loadNutritionData() // Refresh data to include the new meal
         }
     }
-    
+
     /**
-     * Cancels the current meal creation/editing
+     * Saves a complete meal entry
+     * @param mealEntry The complete meal entry to save
      */
-    fun cancelMeal() {
-        _currentMeal.value = null
+    fun saveMeal(mealEntry: MealEntry) {
+        if (mealEntry.name.isBlank()) {
+            // Handle error - meal name cannot be blank
+            return
+        }
+        
+        viewModelScope.launch {
+            _isLoading.value = true
+            val mealId = nutritionRepository.saveMeal(mealEntry)
+            _currentMeal.value = null
+            loadNutritionData() // Refresh data to include the new meal
+        }
     }
     
     /**
-     * Saves a complete meal entry
+     * Cancels the current meal creation/editing operation
      */
-    fun saveMeal(meal: MealEntry) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            nutritionRepository.saveMeal(meal)
-            loadNutritionData() // Refresh data to include the new meal
-            _isLoading.value = false
-        }
+    fun cancelMeal() {
+        _currentMeal.value = null
     }
     
     /**

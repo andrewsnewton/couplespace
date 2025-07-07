@@ -1,24 +1,41 @@
 package com.newton.couplespace.screens.main
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import java.time.Instant
+import java.time.ZoneId
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import android.os.Build
 import android.util.Log
+import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import com.newton.couplespace.models.User
+import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -38,6 +55,8 @@ fun ProfileScreen(navController: NavController) {
     var age by remember { mutableStateOf("") }
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
+    var timezone by remember { mutableStateOf("") }
+    var profilePicture by remember { mutableStateOf("") }
     
     // Partner data
     var partner by remember { mutableStateOf<User?>(null) }
@@ -110,6 +129,8 @@ fun ProfileScreen(navController: NavController) {
                                     age = userData.age.toString()
                                     height = userData.height.toString()
                                     weight = userData.weight.toString()
+                                    timezone = userData.timezone
+                                    profilePicture = userData.profilePicture
                                     isLoading = false
                                 }
                             } else {
@@ -141,6 +162,8 @@ fun ProfileScreen(navController: NavController) {
                                 age = dummyUser.age.toString()
                                 height = dummyUser.height.toString()
                                 weight = dummyUser.weight.toString()
+                                timezone = dummyUser.timezone
+                                profilePicture = dummyUser.profilePicture
                                 isLoading = false
                                 
                                 Log.d("ProfileScreen", "Using fallback data due to App Check error")
@@ -162,6 +185,8 @@ fun ProfileScreen(navController: NavController) {
                                     age = userData.age.toString()
                                     height = userData.height.toString()
                                     weight = userData.weight.toString()
+                                    timezone = userData.timezone
+                                    profilePicture = userData.profilePicture
                                     isLoading = false
                                     
                                     Log.d("ProfileScreen", "Successfully loaded user data")
@@ -245,10 +270,14 @@ fun ProfileScreen(navController: NavController) {
                         age = age,
                         height = height,
                         weight = weight,
+                        timezone = timezone,
+                        profilePicture = profilePicture,
                         onNameChange = { name = it },
                         onAgeChange = { age = it },
                         onHeightChange = { height = it },
                         onWeightChange = { weight = it },
+                        onTimezoneChange = { timezone = it },
+                        onProfilePictureChange = { profilePicture = it },
                         onSave = {
                             isLoading = true
                             // Instead of replacing the entire document, update only the fields that changed
@@ -260,6 +289,8 @@ fun ProfileScreen(navController: NavController) {
                                     "age" to (age.toIntOrNull() ?: 0),
                                     "height" to (height.toIntOrNull() ?: 0),
                                     "weight" to (weight.toDoubleOrNull() ?: 0.0),
+                                    "timezone" to timezone,
+                                    "profilePicture" to profilePicture,
                                     "updatedAt" to Date(),
                                     "isProfileComplete" to true // Ensure profile is marked as complete
                                 )
@@ -274,6 +305,8 @@ fun ProfileScreen(navController: NavController) {
                                             age = age.toIntOrNull() ?: 0,
                                             height = height.toIntOrNull() ?: 0,
                                             weight = weight.toDoubleOrNull() ?: 0.0,
+                                            timezone = timezone,
+                                            profilePicture = profilePicture,
                                             updatedAt = Date(),
                                             isProfileComplete = true
                                         )
@@ -396,14 +429,28 @@ fun ViewProfileContent(user: User?) {
 @Composable
 fun ProfileInfoCard(user: User?) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Add profile picture at the top if available
+            if (!user?.profilePicture.isNullOrBlank()) {
+                AsyncImage(
+                    model = user?.profilePicture,
+                    contentDescription = "Profile Picture",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(CircleShape)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            
             Text(
-                text = "Profile Details",
+                text = "Profile Information",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -411,9 +458,10 @@ fun ProfileInfoCard(user: User?) {
             Spacer(modifier = Modifier.height(16.dp))
             
             ProfileInfoRow(label = "Name", value = user?.name ?: "Not set")
-            ProfileInfoRow(label = "Age", value = "${user?.age ?: "N/A"} years")
-            ProfileInfoRow(label = "Height", value = "${user?.height ?: "N/A"} cm")
-            ProfileInfoRow(label = "Weight", value = "${user?.weight ?: "N/A"} kg")
+            ProfileInfoRow(label = "Age", value = if (user?.age != 0) "${user?.age} years" else "Not set")
+            ProfileInfoRow(label = "Height", value = if (user?.height != 0) "${user?.height} cm" else "Not set")
+            ProfileInfoRow(label = "Weight", value = if (user?.weight != 0.0) "${user?.weight} kg" else "Not set")
+            ProfileInfoRow(label = "Timezone", value = user?.timezone?.takeIf { it.isNotBlank() } ?: "Not set")
             
             if (user?.createdAt != null) {
                 val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
@@ -481,6 +529,7 @@ private fun isEmulator(): Boolean {
             || Build.PRODUCT.contains("google_sdk")
             || Build.PRODUCT.contains("sdk")
             || Build.PRODUCT.contains("sdk_x86")
+            || Build.PRODUCT.contains("sdk_gphone64_arm64")
             || Build.PRODUCT.contains("vbox86p")
             || Build.PRODUCT.contains("emulator")
             || Build.PRODUCT.contains("simulator"))
@@ -492,10 +541,14 @@ fun EditProfileContent(
     age: String,
     height: String,
     weight: String,
+    timezone: String,
+    profilePicture: String,
     onNameChange: (String) -> Unit,
     onAgeChange: (String) -> Unit,
     onHeightChange: (String) -> Unit,
     onWeightChange: (String) -> Unit,
+    onTimezoneChange: (String) -> Unit,
+    onProfilePictureChange: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit
 ) {
@@ -551,6 +604,150 @@ fun EditProfileContent(
             modifier = Modifier.fillMaxWidth()
         )
         
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Timezone Field
+        // Create a simplified list of common timezones with their offsets
+        val availableTimezones = listOf(
+            "America/Los_Angeles", // UTC-8/UTC-7
+            "America/Denver",      // UTC-7/UTC-6
+            "America/Chicago",     // UTC-6/UTC-5
+            "America/New_York",    // UTC-5/UTC-4
+            "America/Toronto",     // UTC-5/UTC-4
+            "Europe/London",       // UTC+0/UTC+1
+            "Europe/Paris",        // UTC+1/UTC+2
+            "Europe/Berlin",       // UTC+1/UTC+2
+            "Europe/Moscow",       // UTC+3
+            "Asia/Dubai",          // UTC+4
+            "Asia/Kolkata",        // UTC+5:30
+            "Asia/Singapore",      // UTC+8
+            "Asia/Tokyo",          // UTC+9
+            "Australia/Sydney",    // UTC+10/UTC+11
+            "Pacific/Auckland"     // UTC+12/UTC+13
+        )
+        
+        // Create a map of timezone IDs to display names with offset
+        val timezoneDisplayMap = availableTimezones.associateWith { tzId ->
+            val zoneId = ZoneId.of(tzId)
+            val offset = zoneId.rules.getOffset(Instant.now())
+            val hours = offset.totalSeconds / 3600
+            val minutes = kotlin.math.abs((offset.totalSeconds % 3600).toInt()) / 60
+            val offsetStr = String.format("%+d:%02d", hours, minutes)
+            val city = tzId.substringAfterLast('/')
+            "$city (UTC$offsetStr)"
+        }
+        
+        var isTimezoneExpanded by remember { mutableStateOf(false) }
+        
+        Text(
+            text = "Timezone",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        // Using experimental Material3 dropdown with opt-in
+        @OptIn(ExperimentalMaterial3Api::class)
+        ExposedDropdownMenuBox(
+            expanded = isTimezoneExpanded,
+            onExpandedChange = { isTimezoneExpanded = it },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            @OptIn(ExperimentalMaterial3Api::class)
+            OutlinedTextField(
+                value = timezoneDisplayMap[timezone] ?: timezone,
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { 
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = isTimezoneExpanded) 
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+            )
+            
+            @OptIn(ExperimentalMaterial3Api::class)
+            ExposedDropdownMenu(
+                expanded = isTimezoneExpanded,
+                onDismissRequest = { isTimezoneExpanded = false },
+                modifier = Modifier.height(200.dp)
+            ) {
+                availableTimezones.forEach { tzId ->
+                    DropdownMenuItem(
+                        text = { Text(timezoneDisplayMap[tzId] ?: tzId) },
+                        onClick = {
+                            onTimezoneChange(tzId)
+                            isTimezoneExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Profile Picture Selection
+        val context = LocalContext.current
+        val imagePickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetContent()
+        ) { uri: Uri? ->
+            uri?.let {
+                // Start upload process and update profilePicture with URL
+                uploadImageToFirebase(context, it) { downloadUrl ->
+                    onProfilePictureChange(downloadUrl)
+                }
+            }
+        }
+        
+        Text(
+            text = "Profile Picture",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        // Image preview or placeholder
+        Box(modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            if (profilePicture.isNotBlank()) {
+                // Show existing profile picture
+                AsyncImage(
+                    model = profilePicture,
+                    contentDescription = "Profile Picture",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                        .clickable { imagePickerLauncher.launch("image/*") }
+                )
+            } else {
+                // Show placeholder
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                        .clickable { imagePickerLauncher.launch("image/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = "Add Photo",
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Button(
+            onClick = { imagePickerLauncher.launch("image/*") },
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        ) {
+            Text(if (profilePicture.isBlank()) "Select Image" else "Change Image")
+        }
+        
         Spacer(modifier = Modifier.height(32.dp))
         
         // Buttons
@@ -568,5 +765,28 @@ fun EditProfileContent(
                 Text("Save")
             }
         }
+    }
+}
+
+// Helper function to upload image to Firebase Storage and get download URL
+private fun uploadImageToFirebase(context: Context, imageUri: Uri, onComplete: (String) -> Unit) {
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+    val storageRef = FirebaseStorage.getInstance().reference
+    val imageRef = storageRef.child("profile_images/$userId/${UUID.randomUUID()}.jpg")
+    
+    // Show upload in progress (you could add a loading indicator here)
+    val uploadTask = imageRef.putFile(imageUri)
+    
+    uploadTask.addOnSuccessListener {
+        // Get download URL after upload is successful
+        imageRef.downloadUrl.addOnSuccessListener { downloadUri ->
+            val imageUrl = downloadUri.toString()
+            onComplete(imageUrl)
+            Log.d("ProfileScreen", "Image uploaded successfully, URL: $imageUrl")
+        }.addOnFailureListener { e ->
+            Log.e("ProfileScreen", "Error getting download URL: ${e.message}")
+        }
+    }.addOnFailureListener { e ->
+        Log.e("ProfileScreen", "Error uploading image: ${e.message}")
     }
 }

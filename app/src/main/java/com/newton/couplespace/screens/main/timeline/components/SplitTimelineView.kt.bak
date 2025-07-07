@@ -1,0 +1,572 @@
+package com.newton.couplespace.screens.main.timeline.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import android.util.Log
+import com.google.firebase.Timestamp
+import com.newton.couplespace.models.TimelineEvent
+import com.newton.couplespace.screens.main.timeline.TimelineUtils
+import java.time.*
+import java.time.format.DateTimeFormatter
+import java.util.TimeZone
+
+/**
+ * A split timeline view that displays events for user and partner side by side
+ * with a central timeline axis. Matches the design shown in the image.
+ */
+
+@Stable
+@Composable
+fun SplitTimelineView(
+    date: LocalDate,
+    events: List<TimelineEvent>,
+    partnerEvents: List<TimelineEvent> = emptyList(),
+    onEventClick: (String) -> Unit,
+    onDateChange: (LocalDate) -> Unit,
+    onAddEvent: () -> Unit,
+    onAddEventWithTime: (Boolean, LocalTime) -> Unit = { _, _ -> },
+    isPaired: Boolean = false,
+    userTimeZone: TimeZone = TimeZone.getDefault(),
+    partnerTimeZone: TimeZone? = null,
+    userProfilePic: String? = null,
+    partnerProfilePic: String? = null,
+    modifier: Modifier = Modifier
+) {
+    // State for scrolling
+    val scrollState = rememberScrollState()
+    
+    // Current time for time indicator in user's timezone
+    val userZoneId = ZoneId.of(userTimeZone.id)
+    val currentTime = LocalTime.now(userZoneId)
+    val currentHour = currentTime.hour
+    
+    // Use isPaired from ViewModel which indicates if the user has a partner in their profile
+    
+    // Get current user ID
+    val currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    
+    // Get partner timezone as ZoneId
+    val partnerZoneId = partnerTimeZone?.let { ZoneId.of(it.id) }
+    
+    // Filter events for the selected date and separate user vs partner events
+    val userEventsForDate = events.filter { event ->
+        if (event.startTime == null) {
+            Log.d("SplitTimelineView", "User Event filtered: Missing start time")
+            return@filter false
+        }
+
+        val sourceTimezoneId = when {
+            event.sourceTimezone.isNotEmpty() -> event.sourceTimezone
+            event.metadata["sourceTimezone"] is String -> event.metadata["sourceTimezone"] as String
+            else -> userTimeZone.id
+        }
+
+        // Verify userTimeZone matches event timezone
+        Log.d("SplitTimelineView", "User Event timezone check: ${sourceTimezoneId} vs ${userTimeZone.id}")
+        
+        // Use centralized TimelineUtils for date matching
+        val shouldInclude = TimelineUtils.shouldEventAppearOnDate(
+            event = event,
+            selectedDate = date,
+            userZoneId = userZoneId,
+            eventSourceTimezoneId = sourceTimezoneId,
+            currentUserId = currentUserId
+        )
+        
+        // Verify currentUserId == event.userId
+        val userIdCheck = event.userId == currentUserId
+        Log.d("SplitTimelineView", "User Event ID check: $userIdCheck")
+        
+        Log.d("SplitTimelineView", "User Event final decision: $shouldInclude")
+        
+        shouldInclude
+    }
+
+
+    val partnerEventsForDate = partnerEvents.filter { event ->
+        if (event.startTime == null) {
+            Log.d("SplitTimelineView", "Partner Event ${event.title} FILTERED: Missing start time")
+            return@filter false
+        }
+
+        val sourceTimezoneId = when {
+            event.sourceTimezone.isNotEmpty() -> event.sourceTimezone
+            event.metadata["sourceTimezone"] is String -> event.metadata["sourceTimezone"] as String
+            else -> partnerTimeZone?.id ?: userTimeZone.id
+        }
+
+        // Verify partnerTimeZone matches event timezone
+        Log.d("SplitTimelineView", "Partner Event timezone check")
+        
+        // Use centralized TimelineUtils for date matching
+        // For partner events, we want events where userId != currentUserId
+        val shouldInclude = TimelineUtils.shouldEventAppearOnDate(
+            event = event,
+            selectedDate = date,
+            userZoneId = userZoneId,
+            eventSourceTimezoneId = sourceTimezoneId,
+            currentUserId = currentUserId,
+            isUserEvent = false // This is a partner event, so we want userId != currentUserId
+        )
+        
+        // Verify currentUserId != event.userId
+        val userIdCheck = event.userId != currentUserId
+        Log.d("SplitTimelineView", "Partner Event ID check: $userIdCheck")
+        
+        Log.d("SplitTimelineView", "Partner Event final decision: $shouldInclude")
+        
+        shouldInclude
+}
+
+    
+    // Calculate pixels per hour for scrolling
+    val density = LocalDensity.current
+    val pixelsPerHour = remember(density) {
+        with(density) { 120.dp.toPx() }
+    }
+    
+    // Launch effect to scroll to current time on initial load
+    LaunchedEffect(key1 = Unit) {
+        // Calculate scroll position (about 2 hours before current time for context)
+        val scrollToHour = (currentHour - 2).coerceAtLeast(0)
+        val scrollPosition = (scrollToHour * pixelsPerHour).toInt()
+        scrollState.animateScrollTo(scrollPosition)
+    }
+    
+    Column(
+        modifier = modifier.fillMaxSize()
+    ) {
+        // Header component with time zone display
+        TimelineHeader(
+            date = date,
+            onDateChange = onDateChange,
+            userTimeZone = userTimeZone,
+            partnerTimeZone = partnerTimeZone,
+            partnerProfilePic = partnerProfilePic,
+            userProfilePic = userProfilePic,
+            onAddEvent = onAddEvent,
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        // Main timeline content
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+        ) {
+            // Timeline container
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Generate time slots for the entire day (00:00 to 23:00)
+                for (hour in 0..23) {
+                    TimeSlot(
+                        hour = hour,
+                        userEvents = userEventsForDate.filter { event ->
+                            // Get the source timezone from the field or fallback to metadata for backward compatibility
+                            val sourceTimezoneId = if (event.sourceTimezone.isNotEmpty()) {
+                                event.sourceTimezone
+                            } else {
+                                // For backward compatibility, check metadata
+                                event.metadata["sourceTimezone"] as? String ?: userTimeZone.id
+                            }
+                            
+                            // Use the event's source timezone for proper time conversion
+                            val eventZoneId = try {
+                                ZoneId.of(sourceTimezoneId)
+                            } catch (e: Exception) {
+                                Log.w("SplitTimelineView", "Invalid sourceTimezone: $sourceTimezoneId, using user timezone instead", e)
+                                userZoneId
+                            }
+                            
+                            try {
+                                // Use the centralized TimelineUtils for consistent timezone handling
+                                val result = TimelineUtils.shouldEventAppearOnDate(
+                                    event = event,
+                                    selectedDate = date,
+                                    userZoneId = userZoneId,
+                                    currentUserId = currentUserId
+                                )
+                                
+                                // Verify that this is a user event (userId == currentUserId)
+                                val isUserEvent = event.userId == currentUserId
+                                Log.d("SplitTimelineView", "  Is user event (userId=${event.userId}, currentUserId=$currentUserId): $isUserEvent")
+                                
+                                // Log the final decision for this event
+                                Log.d("SplitTimelineView", "  Include user event ${event.title} on date $date: ${result && isUserEvent}")
+                                
+                                result && isUserEvent
+                            } catch (e: Exception) {
+                                Log.e("SplitTimelineView", "Error filtering user event: ${event.title}", e)
+                                false // Skip events that cause errors
+                                false
+                            }
+                        },
+                        partnerEvents = partnerEventsForDate.filter { event ->
+                            // Get the source timezone from the field or fallback to metadata for backward compatibility
+                            val sourceTimezoneId = if (event.sourceTimezone.isNotEmpty()) {
+                                event.sourceTimezone
+                            } else {
+                                // For backward compatibility, check metadata
+                                event.metadata["sourceTimezone"] as? String ?: partnerTimeZone?.id ?: userTimeZone.id
+                            }
+                            
+                            // Use the event's source timezone for proper time conversion
+                            val eventZoneId = try {
+                                ZoneId.of(sourceTimezoneId)
+                            } catch (e: Exception) {
+                                Log.w("SplitTimelineView", "Invalid sourceTimezone: $sourceTimezoneId, using partner timezone instead", e)
+                                partnerZoneId ?: userZoneId
+                            }
+                            
+                            try {
+                                // Convert UTC timestamps to event's source timezone
+                                val eventStartInstant = event.startTime.toDate().toInstant()
+                                val eventEndInstant = event.endTime?.toDate()?.toInstant() ?: eventStartInstant.plusSeconds(3600) // Default to 1 hour if no end time
+                                
+                                val eventStartDateTime = eventStartInstant.atZone(eventZoneId).toLocalDateTime()
+                                val eventEndDateTime = eventEndInstant.atZone(eventZoneId).toLocalDateTime()
+                                
+                                // Create time slot start and end times for the selected date
+                                val slotStartDateTime = LocalDateTime.of(date, LocalTime.of(hour, 0))
+                                val slotEndDateTime = LocalDateTime.of(date, LocalTime.of(hour, 59, 59))
+                                
+                                // Convert slot times to event timezone for proper comparison
+                                val slotStartInEventTz = slotStartDateTime.atZone(userZoneId)
+                                    .withZoneSameInstant(eventZoneId).toLocalDateTime()
+                                val slotEndInEventTz = slotEndDateTime.atZone(userZoneId)
+                                    .withZoneSameInstant(eventZoneId).toLocalDateTime()
+                                
+                                // Use centralized TimelineUtils for date matching
+                                val sourceTimezoneId = when {
+                                    event.sourceTimezone.isNotEmpty() -> event.sourceTimezone
+                                    event.metadata["sourceTimezone"] is String -> event.metadata["sourceTimezone"] as String
+                                    else -> partnerTimeZone?.id ?: userTimeZone.id
+                                }
+                                
+                                val dateMatches = com.newton.couplespace.screens.main.timeline.TimelineUtils.shouldEventAppearOnDate(
+                                    event = event,
+                                    selectedDate = date,
+                                    userZoneId = userZoneId,
+                                    eventSourceTimezoneId = sourceTimezoneId,
+                                    currentUserId = currentUserId,
+                                    isUserEvent = false, // For partner events in time slots
+                                    skipUserIdCheck = true // Skip user ID check since we're just checking date match
+                                )
+                                
+                                Log.d("SplitTimelineView", "Partner event: ${event.title}, Event time: $eventStartDateTime-$eventEndDateTime, " +
+                                        "Slot in event TZ: $slotStartInEventTz-$slotEndInEventTz, Date matches: $dateMatches")
+                                
+                                if (!dateMatches) return@filter false
+                                
+                                // Check if event overlaps with the time slot
+                                // An event overlaps if it starts before slot ends AND ends after slot starts
+                                (eventStartDateTime.isBefore(slotEndInEventTz) || eventStartDateTime.isEqual(slotEndInEventTz)) &&
+                                (eventEndDateTime.isAfter(slotStartInEventTz) || eventEndDateTime.isEqual(slotStartInEventTz))
+                            } catch (e: Exception) {
+                                Log.e("SplitTimelineView", "Error filtering partner event by time slot: ${e.message}")
+                                false
+                            }
+                        },
+                        onEventClick = onEventClick,
+                        onAddEventWithTime = { isForPartner -> 
+                            if (isForPartner && partnerTimeZone != null) {
+                                // Use partner's timezone for the time
+                                val userZoneId = ZoneId.of(userTimeZone.id)
+                                val partnerZoneId = ZoneId.of(partnerTimeZone.id)
+                                val userDateTime = date.atTime(hour, 0).atZone(userZoneId)
+                                val partnerDateTime = userDateTime.withZoneSameInstant(partnerZoneId)
+                                val partnerTime = partnerDateTime.toLocalTime()
+                                onAddEventWithTime(isForPartner, partnerTime)
+                            } else {
+                                // Use user's timezone
+                                val time = LocalTime.of(hour, 0)
+                                onAddEventWithTime(isForPartner, time)
+                            }
+                        },
+                        isPaired = isPaired,
+                        isCurrentHour = hour == currentHour,
+                        modifier = Modifier.fillMaxWidth(),
+                        userTimeZone = userTimeZone,
+                        partnerTimeZone = partnerTimeZone,
+                        date = date
+                    )
+                }
+                
+                // Add extra space at bottom for easier scrolling
+                Spacer(modifier = Modifier.height(120.dp))
+            }
+            
+           
+        }
+    }
+}
+
+/**
+ * Represents a single hour slot in the timeline with events on both sides
+ */
+ @Composable
+private fun TimeSlot(
+    hour: Int,
+    userEvents: List<TimelineEvent>,
+    partnerEvents: List<TimelineEvent>,
+    onEventClick: (String) -> Unit,
+    onAddEventWithTime: (Boolean) -> Unit,
+    isPaired: Boolean,
+    isCurrentHour: Boolean,
+    modifier: Modifier = Modifier,
+    userTimeZone: TimeZone,
+    partnerTimeZone: TimeZone?,
+    date: LocalDate
+) {
+    // State to track which side is selected for adding an event
+    var selectedSide by remember { mutableStateOf<String?>(null) }
+    
+    // Format time for display
+    val userZoneId = ZoneId.of(userTimeZone.id)
+    val formattedUserTime = LocalTime.of(hour, 0)
+        .format(DateTimeFormatter.ofPattern("h a"))
+    
+    val formattedPartnerTime = if (partnerTimeZone != null) {
+        val partnerZoneId = ZoneId.of(partnerTimeZone.id)
+        val userDateTime = date.atTime(hour, 0).atZone(userZoneId)
+        val partnerDateTime = userDateTime.withZoneSameInstant(partnerZoneId)
+        // Use a format that includes minutes when they're not zero
+        val timeFormatter = if (partnerDateTime.toLocalTime().minute != 0) {
+            DateTimeFormatter.ofPattern("h:mm a")
+        } else {
+            DateTimeFormatter.ofPattern("h a")
+        }
+        partnerDateTime.toLocalTime().format(timeFormatter)
+    } else ""
+
+    // Apply background highlighting when any side is selected
+    val rowBackground = when {
+        selectedSide == "user" || selectedSide == "partner" -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+        else -> Color.Transparent
+    }
+    
+    // Function to handle slot selection and event addition
+    val handleUserSlotClick = {
+        if (selectedSide == "user") {
+            // Second click on the same side - add event
+            onAddEventWithTime(false)
+            selectedSide = null
+        } else {
+            // First click - just select the side
+            selectedSide = "user"
+        }
+    }
+    
+    val handlePartnerSlotClick = {
+        if (selectedSide == "partner") {
+            // Second click on the same side - add event
+            onAddEventWithTime(true)
+            selectedSide = null
+        } else {
+            // First click - just select the side
+            selectedSide = "partner"
+        }
+    }
+    
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(80.dp) // Fixed height for consistent clickable area
+            .padding(vertical = 4.dp)
+            .background(rowBackground)
+    ) {
+        // Left side (User events)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 8.dp)
+                .fillMaxHeight()
+                .clickable(enabled = userEvents.isEmpty()) { 
+                    // Only allow clicking if there are no events in this slot
+                    handleUserSlotClick()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            if (userEvents.isEmpty()) {
+                if (selectedSide == "user") {
+                    // Show "Tap to add" hint when this side is selected
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp)
+                            .padding(4.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Tap again to add",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            } else {
+                Column(horizontalAlignment = Alignment.End) {
+                    userEvents.forEach { event ->
+                        TimelineEventCard(
+                            event = event,
+                            onClick = { onEventClick(event.id) },
+                            isUserEvent = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+
+        // Center timeline (Time labels + marker + line)
+        Row(
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.width(IntrinsicSize.Min)
+        ) {
+            // Left (user) time label
+            if (isPaired) {
+                Box(modifier = Modifier.width(60.dp)) {
+                    Text(
+                        text = formattedUserTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isCurrentHour) MaterialTheme.colorScheme.primary else Color.Gray,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = 8.dp)
+                    )
+                }
+            }
+
+            // Center marker and line
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.width(IntrinsicSize.Min)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isCurrentHour) MaterialTheme.colorScheme.primary
+                                else Color.LightGray.copy(alpha = 0.5f)
+                            )
+                    )
+                }
+
+                if (!isPaired) {
+                    Text(
+                        text = formattedUserTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isCurrentHour) MaterialTheme.colorScheme.primary else Color.Gray,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .height(70.dp)
+                        .background(
+                            if (isCurrentHour) MaterialTheme.colorScheme.primary
+                            else Color.LightGray.copy(alpha = 0.5f)
+                        )
+                )
+            }
+
+            // Right (partner) time label
+            if (isPaired && partnerTimeZone != null) {
+                Box(modifier = Modifier.width(60.dp)) {
+                    Text(
+                        text = formattedPartnerTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isCurrentHour) MaterialTheme.colorScheme.primary else Color.Gray,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 8.dp)
+                    )
+                }
+            }
+        }
+
+        // Right side (Partner events)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp)
+                .fillMaxHeight()
+                .clickable(enabled = isPaired && partnerEvents.isEmpty()) { 
+                    // Only allow clicking if paired and there are no events in this slot
+                    handlePartnerSlotClick()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            if (isPaired) {
+                if (partnerEvents.isEmpty()) {
+                    if (selectedSide == "partner") {
+                        // Show "Tap to add to partner's timeline" hint when this side is selected
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                                .padding(4.dp)
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Tap again to add",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                } else {
+                    Column(horizontalAlignment = Alignment.Start) {
+                        partnerEvents.forEach { event ->
+                            TimelineEventCard(
+                                event = event,
+                                onClick = { onEventClick(event.id) },
+                                isUserEvent = false,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

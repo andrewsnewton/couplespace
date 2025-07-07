@@ -1,5 +1,6 @@
 package com.newton.couplespace.screens.main.timeline
 
+import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,13 +15,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.newton.couplespace.models.TimelineViewMode
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.temporal.WeekFields
 import java.util.Locale
-import com.newton.couplespace.screens.main.timeline.components.DayTimelineView
+import java.util.TimeZone
+import com.newton.couplespace.screens.main.timeline.components.SplitTimelineView
 import com.newton.couplespace.screens.main.timeline.components.WeekTimelineView
 import com.newton.couplespace.screens.main.timeline.components.MonthCalendarView
 import com.newton.couplespace.screens.main.timeline.components.AgendaView
@@ -32,6 +37,20 @@ fun TimelineScreen(
     onEventClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val application = context.applicationContext as android.app.Application
+    
+    val viewModel: TimelineViewModel = viewModel(
+        factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                return TimelineViewModel(application) as T
+            }
+        }
+    )
+    
+    // Collect the view state from the ViewModel
+    val viewState by viewModel.viewState.collectAsState()
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var viewMode by remember { mutableStateOf(TimelineViewMode.DAY) }
     
@@ -101,10 +120,18 @@ fun TimelineScreen(
                 .padding(padding)
         ) {
             when (viewMode) {
-                TimelineViewMode.DAY -> DayTimelineView(
-                    date = selectedDate,
+                TimelineViewMode.DAY -> SplitTimelineView(
+                    date = viewState.selectedDate,
+                    events = viewState.events,
+                    partnerEvents = viewState.partnerEvents ?: emptyList(),
                     onEventClick = onEventClick,
-                    onDateChange = { selectedDate = it },
+                    onDateChange = { viewModel.setSelectedDate(it) },
+                    onAddEvent = onAddEvent,
+                    isPaired = viewState.isPaired,
+                    userTimeZone = TimeZone.getDefault(),
+                    partnerTimeZone = viewState.partnerTimeZone,
+                    userProfilePic = viewState.userProfilePicture,
+                    partnerProfilePic = viewState.partnerProfilePicture,
                     modifier = Modifier.fillMaxSize()
                 )
                 TimelineViewMode.WEEK -> WeekTimelineView(

@@ -26,10 +26,12 @@ data class TimelineEvent(
     val eventType: EventType = EventType.EVENT,
     val category: EventCategory = EventCategory.PERSONAL,
     val priority: Priority = Priority.MEDIUM,
-    @field:PropertyName("isRecurring")
+    @field:PropertyName("recurring")
+    @get:PropertyName("recurring")
     val isRecurring: Boolean = false,
     val recurrenceRule: RecurrenceRule? = null,
-    @field:PropertyName("isCompleted")
+    @field:PropertyName("completed")
+    @get:PropertyName("completed")
     val isCompleted: Boolean = false,
     val notificationSettings: NotificationSettings = NotificationSettings(),
     val createdAt: Timestamp = Timestamp.now(),
@@ -37,6 +39,7 @@ data class TimelineEvent(
     val createdBy: String = "",
     val lastModifiedBy: String = "",
     val color: String = "", // Hex color code for the event
+    val sourceTimezone: String = "", // Timezone ID where the event was created
     @get:Exclude
     @Transient
     val metadata: MutableMap<String, Any?> = mutableMapOf()
@@ -215,10 +218,15 @@ data class TimelineViewState(
     val selectedDate: LocalDate = LocalDate.now(),
     val viewMode: TimelineViewMode = TimelineViewMode.DAY,
     val events: List<TimelineEvent> = emptyList(),
+    val partnerEvents: List<TimelineEvent>? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
     val selectedEvent: TimelineEvent? = null,
-    val nudgeSuccess: Boolean = false
+    val nudgeSuccess: Boolean = false,
+    val isPaired: Boolean = false,
+    val partnerTimeZone: TimeZone? = null,
+    val userProfilePicture: String? = null,
+    val partnerProfilePicture: String? = null
 )
 
 /**

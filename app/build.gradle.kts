@@ -48,9 +48,18 @@ android {
         compose = true
     }
     
-    // Compose compiler options are now configured via the plugin
+    // Compose compiler configuration
     composeCompiler {
-        enableStrongSkippingMode = true // Improves recomposition performance
+        // Disable strong skipping mode to resolve build issues
+        enableStrongSkippingMode = false
+    }
+    
+    kotlinOptions {
+        // Add compiler arguments to disable Live Literals
+        freeCompilerArgs += listOf(
+            "-P",
+            "plugin:androidx.compose.compiler.plugins.kotlin:liveLiteralsEnabled=false"
+        )
     }
 
     defaultConfig {

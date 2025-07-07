@@ -43,6 +43,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
+import java.util.TimeZone
 
 @Composable
 fun WeekTimelineView(
@@ -50,7 +51,8 @@ fun WeekTimelineView(
     events: List<TimelineEvent> = emptyList(),
     onEventClick: (String) -> Unit = {},
     onDateChange: (LocalDate) -> Unit = {}, // Added callback for date changes
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userTimeZone: TimeZone = TimeZone.getDefault()
 ) {
     // State for tracking drag gesture
     var isDragging by remember { mutableStateOf(false) }

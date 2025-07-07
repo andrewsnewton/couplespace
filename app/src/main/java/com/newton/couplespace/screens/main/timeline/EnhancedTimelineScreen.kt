@@ -61,6 +61,37 @@ fun EnhancedTimelineScreen(
     val viewState by viewModel.viewState.collectAsState()
     val selectedEvent by viewModel.selectedEvent.collectAsState()
     
+    // Collect user and partner timezone states from ViewModel
+    val userTimezone by viewModel.userTimezone.collectAsState()
+    val partnerTimezone by viewModel.partnerTimezone.collectAsState()
+    
+    // Get current user ID from Firebase Auth
+    val currentUserId = remember { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+    
+    // Log timezone and event information for debugging
+    LaunchedEffect(viewState.events, viewState.partnerEvents, userTimezone, partnerTimezone) {
+        Log.d(TAG, "User timezone: ${userTimezone.id}, Partner timezone: ${partnerTimezone?.id ?: "None"}")
+        Log.d(TAG, "Selected date: ${viewState.selectedDate}")
+        Log.d(TAG, "Total events: ${viewState.events.size}, User events: ${viewState.events.filter { it.userId == currentUserId }.size}")
+        Log.d(TAG, "Total partner events: ${viewState.partnerEvents?.size ?: 0}")
+        
+        // Log partner events details
+        viewState.partnerEvents?.forEachIndexed { index, event ->
+            Log.d(TAG, "Partner event $index: ${event.title}, userId=${event.userId}, sourceTimezone=${event.sourceTimezone}")
+            Log.d(TAG, "  Start time: ${event.startTime?.toDate()}, End time: ${event.endTime?.toDate()}")
+            Log.d(TAG, "  Event metadata: ${event.metadata}")
+        }
+        
+        // Verify currentUserId != event.userId for partner events
+        val incorrectPartnerEvents = viewState.partnerEvents?.filter { it.userId == currentUserId } ?: emptyList()
+        if (incorrectPartnerEvents.isNotEmpty()) {
+            Log.w(TAG, "WARNING: Found ${incorrectPartnerEvents.size} partner events with current user ID")
+            incorrectPartnerEvents.forEach { event ->
+                Log.w(TAG, "  Incorrect partner event: ${event.title}, userId=${event.userId}")
+            }
+        }
+    }
+    
     // Format the title based on the view mode
     val titleFormatter = remember { DateTimeFormatter.ofPattern("MMMM d, yyyy") }
     val monthFormatter = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
@@ -87,6 +118,9 @@ fun EnhancedTimelineScreen(
     var selectedTimeForNewEvent by remember { mutableStateOf(
         LocalTime.now().plusHours(1).withMinute(0).withSecond(0)
     ) }
+    
+    // State for whether the new event is for partner's timeline
+    var isEventForPartner by remember { mutableStateOf(false) }
     
     Scaffold(
         topBar = {
@@ -153,27 +187,47 @@ fun EnhancedTimelineScreen(
             Box(modifier = Modifier.padding(paddingValues)) {
                 when (viewState.viewMode) {
                     TimelineViewMode.DAY -> {
-                        DayTimelineView(
+                        SplitTimelineView(
                             date = viewState.selectedDate,
                             events = viewState.events,
+                            partnerEvents = viewState.partnerEvents ?: emptyList(),
                             onEventClick = { eventId -> viewModel.selectEvent(eventId) },
                             onDateChange = { date -> viewModel.setSelectedDate(date) },
+                            onAddEvent = { viewModel.showAddEventDialog() },
+                            onAddEventWithTime = { isForPartner, time -> 
+                                // Set the selected date and time for the new event
+                                selectedDateForNewEvent = viewState.selectedDate
+                                selectedTimeForNewEvent = time
+                                isEventForPartner = isForPartner
+                                showAddEventDialog = true
+                            },
+                            isPaired = viewState.isPaired,
+                            userTimeZone = userTimezone,
+                            partnerTimeZone = viewState.partnerTimeZone,
+                            userProfilePic = viewState.userProfilePicture,
+                            partnerProfilePic = viewState.partnerProfilePicture,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                     TimelineViewMode.WEEK -> {
+                        // Combine user and partner events for week view
+                        val allEvents = viewState.events + (viewState.partnerEvents ?: emptyList())
+                        
                         WeekTimelineView(
                             startDate = viewState.selectedDate,
-                            events = viewState.events,
+                            events = allEvents,
                             onEventClick = { eventId -> viewModel.selectEvent(eventId) },
                             onDateChange = { date -> viewModel.setSelectedDate(date) },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                     TimelineViewMode.MONTH -> {
+                        // Combine user and partner events for month view
+                        val allEvents = viewState.events + (viewState.partnerEvents ?: emptyList())
+                        
                         MonthCalendarView(
                             selectedDate = viewState.selectedDate,
-                            events = viewState.events,
+                            events = allEvents,
                             onDateSelected = { date -> viewModel.setSelectedDate(date) },
                             onEventClick = { eventId -> viewModel.selectEvent(eventId) },
                             onMonthChange = { date -> viewModel.setSelectedDate(date) },
@@ -182,7 +236,7 @@ fun EnhancedTimelineScreen(
                     }
                     TimelineViewMode.AGENDA -> {
                         // Filter out events with null timestamps to prevent crashes
-                        val safeEvents = viewState.events.filter { 
+                        val safeEvents = (viewState.events + (viewState.partnerEvents ?: emptyList())).filter { 
                             it.startTime != null && it.endTime != null
                         }
                         
@@ -248,7 +302,9 @@ fun EnhancedTimelineScreen(
                         },
                         initialEvent = selectedEvent,
                         initialDate = selectedDateForNewEvent,
-                        initialTime = selectedTimeForNewEvent
+                        initialTime = selectedTimeForNewEvent,
+                        viewModel = viewModel,
+                        initialIsForPartner = isEventForPartner
                     )
                 }
             }
@@ -305,11 +361,24 @@ private fun EventDetailDialog(
                                 fontWeight = FontWeight.Bold
                             )
                             
-                            // Format dates for header
+                            // Get event's source timezone
+                            val sourceTimezoneId = when {
+                                event.sourceTimezone.isNotEmpty() -> event.sourceTimezone
+                                event.metadata["sourceTimezone"] is String -> event.metadata["sourceTimezone"] as String
+                                else -> java.time.ZoneId.systemDefault().id
+                            }
+                            
+                            val eventZoneId = try {
+                                java.time.ZoneId.of(sourceTimezoneId)
+                            } catch (e: Exception) {
+                                java.time.ZoneId.systemDefault()
+                            }
+                            
+                            // Format dates for header using event's source timezone
                             val startTime = event.startTime.toDate().toInstant()
-                                .atZone(java.time.ZoneId.systemDefault())
+                                .atZone(eventZoneId)
                             val endTime = event.endTime.toDate().toInstant()
-                                .atZone(java.time.ZoneId.systemDefault())
+                                .atZone(eventZoneId)
                             
                             val dateFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d, yyyy")
                             val timeFormatter = DateTimeFormatter.ofPattern("h:mm a")
@@ -325,11 +394,24 @@ private fun EventDetailDialog(
                 
                 // Content
                 Column(modifier = Modifier.padding(24.dp)) {
-                    // Format dates
+                    // Get event's source timezone
+                    val sourceTimezoneId = when {
+                        event.sourceTimezone.isNotEmpty() -> event.sourceTimezone
+                        event.metadata["sourceTimezone"] is String -> event.metadata["sourceTimezone"] as String
+                        else -> java.time.ZoneId.systemDefault().id
+                    }
+                    
+                    val eventZoneId = try {
+                        java.time.ZoneId.of(sourceTimezoneId)
+                    } catch (e: Exception) {
+                        java.time.ZoneId.systemDefault()
+                    }
+                    
+                    // Format dates using event's source timezone
                     val startTime = event.startTime.toDate().toInstant()
-                        .atZone(java.time.ZoneId.systemDefault())
+                        .atZone(eventZoneId)
                     val endTime = event.endTime.toDate().toInstant()
-                        .atZone(java.time.ZoneId.systemDefault())
+                        .atZone(eventZoneId)
                     
                     val timeFormatter = DateTimeFormatter.ofPattern("h:mm a")
                     
@@ -344,7 +426,7 @@ private fun EventDetailDialog(
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
                             Text(
-                                text = "${startTime.format(timeFormatter)} - ${endTime.format(timeFormatter)}",
+                                text = "${startTime.format(timeFormatter)} - ${endTime.format(timeFormatter)} (${eventZoneId.id})",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )

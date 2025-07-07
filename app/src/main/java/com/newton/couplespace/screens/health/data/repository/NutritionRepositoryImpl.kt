@@ -316,6 +316,64 @@ class NutritionRepositoryImpl @Inject constructor(
             // In a real app, log the error
         }
     }
+    
+    /**
+     * Get a meal by its ID from Firebase
+     */
+    override suspend fun getMealById(mealId: String): MealEntry {
+        return try {
+            val docSnapshot = mealsCollection.document(mealId).get().await()
+            
+            if (docSnapshot.exists()) {
+                val data = docSnapshot.data ?: throw Exception("Meal data is null")
+                val userId = auth.currentUser?.uid ?: "mock-user-id"
+                
+                // Extract foods list if available
+                val foodsList = (data["foods"] as? List<*>)?.mapNotNull { foodData ->
+                    if (foodData is Map<*, *>) {
+                        FoodItem(
+                            id = (foodData["id"] as? String) ?: "",
+                            name = (foodData["name"] as? String) ?: "",
+                            calories = (foodData["calories"] as? Number)?.toInt() ?: 0,
+                            protein = (foodData["protein"] as? Number)?.toFloat() ?: 0f,
+                            carbs = (foodData["carbs"] as? Number)?.toFloat() ?: 0f,
+                            fat = (foodData["fat"] as? Number)?.toFloat() ?: 0f,
+                            servingSize = (foodData["servingSize"] as? String) ?: "100g",
+                            fiber = (foodData["fiber"] as? Number)?.toFloat() ?: 0f,
+                            sugar = (foodData["sugar"] as? Number)?.toFloat() ?: 0f,
+                            sodium = (foodData["sodium"] as? Number)?.toFloat() ?: 0f,
+                            imageUrl = foodData["imageUrl"] as? String,
+                            category = (foodData["category"] as? String) ?: "",
+                            isFavorite = (foodData["isFavorite"] as? Boolean) ?: false
+                        )
+                    } else null
+                } ?: emptyList()
+                
+                MealEntry(
+                    id = docSnapshot.id,
+                    userId = data["userId"] as? String ?: userId,
+                    name = data["name"] as? String ?: "",
+                    timestamp = Instant.ofEpochMilli((data["timestamp"] as? Number)?.toLong() ?: 0L),
+                    calories = (data["calories"] as? Number)?.toInt() ?: 0,
+                    carbs = (data["carbs"] as? Number)?.toFloat() ?: 0f,
+                    protein = (data["protein"] as? Number)?.toFloat() ?: 0f,
+                    fat = (data["fat"] as? Number)?.toFloat() ?: 0f,
+                    category = data["category"] as? String ?: "other",
+                    foods = foodsList,
+                    notes = data["notes"] as? String ?: "",
+                    imageUri = data["imageUri"] as? String ?: null,
+                    isShared = data["isShared"] as? Boolean ?: false,
+                    isFavorite = data["isFavorite"] as? Boolean ?: false,
+                    tags = (data["tags"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                )
+            } else {
+                throw Exception("Meal not found")
+            }
+        } catch (e: Exception) {
+            // In a real app, log the error and consider a better error handling strategy
+            throw e
+        }
+    }
 
     /**
      * Update meal shared status

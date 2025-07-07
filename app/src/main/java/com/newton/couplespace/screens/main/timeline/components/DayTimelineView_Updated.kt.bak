@@ -1,0 +1,247 @@
+package com.newton.couplespace.screens.main.timeline.components
+
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import com.newton.couplespace.models.TimelineEvent
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.util.TimeZone
+
+/**
+ * A Material 3 timeline view that displays events for a specific day
+ * with elegant visual styling and interactive elements.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DayTimelineView(
+    date: LocalDate,
+    events: List<TimelineEvent> = emptyList(),
+    onEventClick: (String) -> Unit,
+    onDateChange: (LocalDate) -> Unit = {},
+    modifier: Modifier = Modifier,
+    partnerEvents: List<TimelineEvent> = emptyList(),
+    isPaired: Boolean = false,
+    userTimeZone: TimeZone = TimeZone.getDefault(),
+    partnerTimeZone: TimeZone? = null
+) {
+    // State for tracking drag gesture
+    var isDragging by remember { mutableStateOf(false) }
+    
+    // State for tracking selected time and events
+    var selectedTime by remember { mutableStateOf<LocalTime?>(null) }
+    var showEventGroupDialog by remember { mutableStateOf(false) }
+    var eventsForSelectedTime by remember { mutableStateOf<List<TimelineEvent>>(emptyList()) }
+
+    // State to track which view mode is selected (classic or couple)
+    var useNewCoupleView by remember { mutableStateOf(true) }
+
+    // Process user events for display
+    val processedEvents = remember(events, date) {
+        events.filter { event ->
+            if (event.startTime == null || event.endTime == null) {
+                return@filter false
+            }
+
+            try {
+                // Convert to LocalDate for comparison
+                val eventStartDate = event.startTime.toDate().toInstant()
+                    .atZone(ZoneId.systemDefault()).toLocalDate()
+                val eventEndDate = event.endTime.toDate().toInstant()
+                    .atZone(ZoneId.systemDefault()).toLocalDate()
+
+                // Check if event is on the selected date
+                eventStartDate.isEqual(date) ||
+                        (eventStartDate.isBefore(date) && eventEndDate.isAfter(date)) ||
+                        eventEndDate.isEqual(date)
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    // Total minutes in a day for continuous timeline
+    val totalMinutesInDay = 24 * 60
+
+    // Use the constant for pixels per minute
+    val pixelsPerMinute = TimelineUtils.PIXELS_PER_MINUTE
+
+    // Total height of the timeline in dp
+    val timelineHeight = (totalMinutesInDay.toFloat() * pixelsPerMinute).dp
+
+    // Create a scrollState for the continuous timeline
+    val scrollState = rememberScrollState()
+
+    // Current time for the indicator
+    val currentTime = LocalTime.now()
+    val currentMinutesSinceMidnight = currentTime.hour * 60 + currentTime.minute
+
+    // Scroll to current time on initial load (with offset to show context)
+    LaunchedEffect(Unit) {
+        val scrollPosition =
+            ((currentMinutesSinceMidnight - 60) * pixelsPerMinute).toInt().coerceAtLeast(0)
+        scrollState.scrollTo(scrollPosition)
+    }
+
+    // Process partner events for display (filtered by the same date criteria)
+    val processedPartnerEvents = remember(partnerEvents, date, isPaired) {
+        if (!isPaired) {
+            emptyList()
+        } else {
+            partnerEvents.filter { event ->
+                if (event.startTime == null || event.endTime == null) {
+                    return@filter false
+                }
+
+                try {
+                    // Convert to LocalDate for comparison
+                    val eventStartDate = event.startTime.toDate().toInstant()
+                        .atZone(ZoneId.systemDefault()).toLocalDate()
+                    val eventEndDate = event.endTime.toDate().toInstant()
+                        .atZone(ZoneId.systemDefault()).toLocalDate()
+
+                    // Check if event is on the selected date
+                    eventStartDate.isEqual(date) ||
+                            (eventStartDate.isBefore(date) && eventEndDate.isAfter(date)) ||
+                            eventEndDate.isEqual(date)
+                } catch (e: Exception) {
+                    false
+                }
+            }
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        // Use the new Material 3 Timeline Header component 
+        TimelineHeader(
+            date = date,
+            onDateChange = onDateChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .zIndex(1f)
+        )
+
+        // Option to toggle between single user view and couple view if paired
+        if (isPaired) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "View Mode:",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                // Enhanced Material 3 segmented button
+                FilledTonalIconButton(
+                    onClick = { useNewCoupleView = !useNewCoupleView },
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = if (useNewCoupleView) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                        },
+                        contentColor = if (useNewCoupleView) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                ) {
+                    Icon(
+                        Icons.Rounded.SwapHoriz,
+                        contentDescription = "Toggle View Mode"
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Text(
+                    text = if (useNewCoupleView) "Couple View" else "Single View",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        // Timeline content
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            // Main timeline container
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                                    onClick = { onEventClick(event.id) },
+                                    isUserEvent = true,
+                                    modifier = Modifier
+                                        .width(eventWidth.dp)
+                                        .height(eventHeight)
+                                        .offset(y = topOffset, x = (xOffset + 16).dp) // Add padding offset
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                // Current time indicator - only show if it's today
+                if (date.isEqual(LocalDate.now())) {
+                    // Use the modular CurrentTimeIndicator component
+                    CurrentTimeIndicator(
+                        currentTime = currentTime,
+                        pixelsPerMinute = pixelsPerMinute,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(10f) // Ensure it's above everything else
+                    )
+                }
+            }
+        }
+    }
+    
+    // Show event group dialog when events are selected at a specific time
+    if (showEventGroupDialog && selectedTime != null) {
+        // Use the modular TimelineEventDialog component
+        TimelineEventDialog(
+            events = eventsForSelectedTime,
+            selectedTime = selectedTime,
+            onEventClick = onEventClick,
+            onDismissRequest = { showEventGroupDialog = false }
+        )
+    }
+}
